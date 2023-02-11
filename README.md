@@ -5,7 +5,7 @@
 
 ## How to use
 
-1. Download newest geckodriver version from https://github.com/mozilla/geckodriver/releases and drop it to 
+1. Download newest geckodriver version from https://github.com/mozilla/geckodriver/releases and drop it to your project folder
 2. Install selenium ```pip install selenium```
 ```py
 from instagram_dm import initialize_driver, login, send_msg
