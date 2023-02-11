@@ -1,6 +1,8 @@
 # instagram-dm
  Selenium based library that automates direct messaging to instagram accounts
 
+## currently not working with any 2-step verification
+
 ## How to use
 
 ```py
