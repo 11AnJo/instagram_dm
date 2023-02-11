@@ -12,10 +12,7 @@ import logging
 import sys
 
 logger = logging.getLogger(__name__)
-#logging.basicConfig(filename='dm.log', level=logging.WARNING,
-#                    format='%(asctime)s %(levelname)s: %(message)s',
-#                    datefmt='%m/%d/%Y %I:%M:%S %p',
-#                    handlers=[logging.FileHandler('example.log'), logging.StreamHandler(sys.stdout)])
+
 
 selectors = {
             "cookie_accept":"//button[text()='Only allow essential cookies']",
@@ -24,6 +21,7 @@ selectors = {
             "login_password_field":"//input[@name='password']",
             "profile_message_button":"//div[@role='button' and text()='Message']",
             "profile_followers_div":"//div[text()=' followers']",
+            "dm_select_user":'//div[text()="{}"]',
             "dm_msg_field":"//textarea[@placeholder='Message...']",
             "dm_notification_present":"//h2[text()='Turn on Notifications']",
             "dm_notification_disable":"//button[text()='Not Now']",
@@ -118,29 +116,33 @@ def login(driver, username, password):
 
     except:
         logger.exception("login")
-            
+
 
 def send_msg(driver,to_username,msg):
     logger.debug(f"send_msg() called with parameters: driver={driver}, to_username={to_username}, msg={msg}")
-    #logger.info(f"{to_username} : {msg}")
     try:
-        driver.get(f"https://www.instagram.com/{to_username}")
-        try:
-            msg_btn = wait.until(EC.presence_of_element_located((By.XPATH, selectors["profile_message_button"])))
-        except:
-            logger.warning(f"cannot send message to user:{to_username}")
-            return
+        driver.get("https://www.instagram.com/direct/new/?hl=en")
+    
+        search_user_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@placeholder='Search...' and @name='queryBox']")))
+        search_user_field.send_keys(to_username)
 
-        msg_btn.click()
+        if __is_element_present(driver, selectors["dm_notification_present"]):
+            notifications = driver.find_element_by_xpath(selectors["dm_notification_disable"])
+            notifications.click()
+            
+        sleep(1)
+        elements = wait.until(EC.presence_of_all_elements_located((By.XPATH, selectors["dm_select_user"].format(to_username))))
+        
+        if elements and len(elements) > 0:
+            elements[0].click()    
+
+        next_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//button/div[text()='Next']")))
+        driver.execute_script("arguments[0].click();", next_btn)
         
         #in the direct messages section
         msg_field = wait.until(EC.presence_of_element_located((By.XPATH,selectors["dm_msg_field"])))
 
         msg_field.send_keys(msg)
-
-        if __is_element_present(driver, selectors["dm_notification_present"]):
-            notifications = driver.find_element_by_xpath(selectors["dm_notification_disable"])
-            notifications.click()
 
         send_btn = driver.find_element_by_xpath(selectors["dm_send_button"])
         send_btn.click()
