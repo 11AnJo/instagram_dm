@@ -5,8 +5,10 @@
 
 ## How to use
 
+1. Download newest geckodriver version from https://github.com/mozilla/geckodriver/releases and drop it to 
+2. Install selenium ```pip install selenium```
 ```py
-from instagram-dm import initialize_driver, login, send_msg
+from instagram_dm import initialize_driver, login, send_msg
 
 driver = initialize_driver()
 login(driver, username, password)
