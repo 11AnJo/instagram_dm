@@ -6,7 +6,7 @@
 ## How to use
 
 ```py
-from dm import initialize_driver, login, send_msg
+from instagram-dm import initialize_driver, login, send_msg
 
 driver = initialize_driver()
 login(driver, username, password)
