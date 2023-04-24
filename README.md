@@ -4,6 +4,11 @@ This script provides a way to automate sending direct messages on Instagram usin
 
 ## Dependencies
 
+Download newest geckodriver version from 
+    https://github.com/mozilla/geckodriver/releases 
+and drop it to your project folder
+
+
 To use this script, you need to have the following Python packages installed:
 
     selenium
