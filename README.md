@@ -67,6 +67,8 @@ The User class has the following methods:
 The LOCATORS dictionary contains XPath locators for various elements on the Instagram website.
 
 ## Notes
+If you have any questions or feedback feel free to contact me.
+
 This script is provided for educational purposes only. Automating actions on Instagram may violate their terms of service, and your account may be subject to restrictions or bans. Use this script at your own risk.
 
 
