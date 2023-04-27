@@ -60,6 +60,7 @@ class User:
         else:
             logger.setLevel(logging.INFO)
 
+
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setLevel(logging.DEBUG)
 
@@ -236,13 +237,6 @@ class User:
 
 
     def send_msg(self,to_username,msg):
-        def select_user(elements):
-            if elements and len(elements) > 0:
-                elements[0].click()    
-            next_btn = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["dm_select_user_btn"])))
-            self.driver.execute_script("arguments[0].click();", next_btn)
-        
-
         try:
             self.logger.debug(f"send_msg() called with parameters to_username: {to_username}, msg: {msg}")
 
@@ -251,19 +245,24 @@ class User:
                 self.login()
 
 
-            wait = WebDriverWait(self.driver, 10)
+            wait = WebDriverWait(self.driver, 5)
             self.driver.get("https://www.instagram.com/direct/new/?hl=en")
             
             search_user_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@name='queryBox']"))) #new dm button
             search_user_field.send_keys(to_username)
-            elements = wait.until(EC.presence_of_all_elements_located((By.XPATH, LOCATORS["dm_select_user"].format(to_username))))  #wait for instagram to show list
 
             if self.__is_element_present("//div[text()='No account found.']",0):
                 self.logger.info(f"Account not found: {to_username}")
                 return "Account not found"
             
-            select_user(elements)#from list
+           
             #
+            username_path = f"//span[contains(text(), '{to_username}')]"
+            username_element = wait.until(EC.presence_of_element_located((By.XPATH, username_path)))
+            username_element.click()
+
+            next_btn = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["dm_select_user_btn"])))
+            self.driver.execute_script("arguments[0].click();", next_btn)
 
             wait_2 = WebDriverWait(self.driver, 5)
             try:
