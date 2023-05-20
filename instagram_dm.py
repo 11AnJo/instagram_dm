@@ -2,6 +2,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
 from time import sleep
 import time
 import logging
@@ -12,33 +13,34 @@ from firefox_setup import initialize_driver
 
 
 LOCATORS = {
-            "cookie_accept":"//button[text()='Only allow essential cookies']",
+            "cookie_accept":"//button[text()='Decline optional cookies']",
             "cookie_text":"//*[text()='Allow the use of cookies from Instagram on this browser?']",
             "login_username_field":"//input[@name='username']",
             "login_password_field":"//input[@name='password']",
-            "dm_select_user":'//span[text()="{}"]',
-            "dm_select_user_btn": "//button/div[text()='Next']",
-            "dm_msg_field":"//textarea[@placeholder='Message...']",
+            "new_dm_btn":"//div[@role= 'button'][.//div//*//*[text()='New message']]",
+            "dm_type_username":"//input[@placeholder='Search...']",
+            "dm_select_user":'//span/div/span[text()="{}"]',
+            "dm_user_not_found":"//span[text()='No account found.']",
+            "dm_start_chat_btn": "//div/div[text()='Chat' and @role='button']",
+            "dm_msg_field":"//div[@role='textbox' and @aria-label='Message']",
             "dm_notification_present":"//span[text()='Turn on Notifications']",
             "dm_notification_disable":"//button[text()='Not Now']",
             "dm_send_button":"//div[@role='button' and text()='Send']",
             "dm_error_present":"//p[text()='Something went wrong. Please try again.']",
             "2f_screen_present":"//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
-            "2f_entering_error":"//p[@id='twoFactorErrorAlert' and @role='alert']"
+            "2f_entering_error":"//p[@id='twoFactorErrorAlert' and @role='alert']",
+            "check_dm_message_sent_to_user":"//div[@role='listbox']//div//div//div[@role='button']",
+            "login_error":"//p[@id='slfErrorAlert']"
         }
 
 
-
-
-
-    
-
-
 class User:
-    def __init__(self,username,password,token=False,debug=False, use_chrome=False):
+    def __init__(self,username,password,token=False,debug=False, use_chrome=False,Name="Acc"):
         self.username = username
         self.password = password
         self.two_factor_token = token
+
+        self.name = Name
 
         self.cookies_dict = None
 
@@ -54,7 +56,7 @@ class User:
         
 
     def __initialize_log(self):
-        logger = logging.getLogger(f"instagram_web acc - {self.username}")
+        logger = logging.getLogger(f"instagram_web {self.name} - {self.username}")
         if self.debug:
             logger.setLevel(logging.DEBUG)
         else:
@@ -64,7 +66,7 @@ class User:
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setLevel(logging.DEBUG)
 
-        file_handler = logging.FileHandler(f'log/acc-{self.username}.log')
+        file_handler = logging.FileHandler(f'log/{self.name} - {self.username}.log')
         file_handler.setLevel(logging.DEBUG)
 
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -154,7 +156,7 @@ class User:
         self.__initialize_driver(use_chrome=self.use_chrome)
         self.logger.debug(f"login() called for {self.username}:{self.password}")
         try:
-            self.driver.get('https://instagram.com/login')
+            self.driver.get('https://instagram.com/accounts/login')
             username_field = self.wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["login_username_field"])))
             password_field = self.driver.find_element("xpath",LOCATORS["login_password_field"])
             url = self.driver.current_url
@@ -162,7 +164,7 @@ class User:
             password_field.send_keys(self.password)
             password_field.send_keys(Keys.RETURN)
             
-            if self.__is_element_present("//p[@id='slfErrorAlert']",5):
+            if self.__is_element_present(LOCATORS['login_error'],5):
                 self.logger.error(f"There was a problem logging you into Instagram. Please try again soon.")
                 return "There was a problem logging you into Instagram. Please try again soon."
 
@@ -174,7 +176,6 @@ class User:
                     if self.two_factor_token:
                         self.logger.debug("two factor is on, trying to login")
                         self.__two_factor()
-
 
 
                     self.driver.get("https://www.instagram.com/direct/inbox")
@@ -221,7 +222,7 @@ class User:
     
 
 
-    def __is_element_present(self, xpath, time_to_wait):
+    def __is_element_present(self, xpath, time_to_wait=0):
 
         wait = WebDriverWait(self.driver, time_to_wait)
         self.logger.debug(f"__is_element_present() called with parameters: xpath: {xpath} time to wait: {time_to_wait}")
@@ -236,7 +237,11 @@ class User:
         
 
 
-    def send_msg(self,to_username,msg):
+    def send_msg(self,to_username,msg,check_dm_message=False):
+        def check_dm_message_sent_to_user():
+            return self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'],0)
+        
+
         try:
             self.logger.debug(f"send_msg() called with parameters to_username: {to_username}, msg: {msg}")
 
@@ -244,24 +249,37 @@ class User:
                 self.logger.debug("acc not logged in. Trying to login")
                 self.login()
 
+            if not self.__is_element_present(LOCATORS["new_dm_btn"],0):
+                self.driver.get("https://www.instagram.com/direct/")
+
+            
 
             wait = WebDriverWait(self.driver, 5)
-            self.driver.get("https://www.instagram.com/direct/new/?hl=en")
-            
-            search_user_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@name='queryBox']"))) #new dm button
+            new_dm_btn = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["new_dm_btn"]))) #new dm button
+
+            try:
+                new_dm_btn.click()
+            except:
+                self.driver.get("https://www.instagram.com/direct/")
+                new_dm_btn = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["new_dm_btn"]))) #new dm button
+                new_dm_btn.click()
+
+
+            search_user_field = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["dm_type_username"])))
             search_user_field.send_keys(to_username)
 
-            if self.__is_element_present("//div[text()='No account found.']",0):
-                self.logger.info(f"Account not found: {to_username}")
-                return "Account not found"
-            
+            #if self.__is_element_present(LOCATORS["dm_user_not_found"],0):
+            #    self.logger.info(f"Account not found: {to_username}")
+            #    return "Account not found"
+            #returns true always
            
             #
-            username_path = f"//span[contains(text(), '{to_username}')]"
+            wait = WebDriverWait(self.driver, 10)
+            username_path = LOCATORS["dm_select_user"].format(to_username)
             username_element = wait.until(EC.presence_of_element_located((By.XPATH, username_path)))
             username_element.click()
 
-            next_btn = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["dm_select_user_btn"])))
+            next_btn = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["dm_start_chat_btn"])))
             self.driver.execute_script("arguments[0].click();", next_btn)
 
             wait_2 = WebDriverWait(self.driver, 5)
@@ -275,7 +293,18 @@ class User:
                         return "freeze" 
             except:
                 msg_field = wait.until(EC.presence_of_element_located((By.XPATH,LOCATORS["dm_msg_field"])))
-                msg_field.send_keys(msg)
+                
+                if check_dm_message:
+                    if check_dm_message_sent_to_user():
+                        return 'already sent'
+                
+                action = ActionChains(self.driver)
+                action.move_to_element(msg_field)
+                action.click()
+                action.send_keys(msg)
+                action.perform()
+
+
                 send_btn = self.driver.find_element("xpath",LOCATORS["dm_send_button"])
                 send_btn.click()
                 #TODO check if message popped up
