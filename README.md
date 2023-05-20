@@ -51,26 +51,6 @@ Get session cookies (may use for a requesting directly from instagram api)
 cookies = user.get_cookies(close_after=True)
 ````
 
-## Code Overview
-
-The provided code defines a User class with several methods to manage an Instagram account, including logging in, accepting cookies, handling two-factor authentication, and sending direct messages.
-
-The User class has the following methods:
-
-    __init__(self, username, password, token=False, debug=False, use_chrome=False): Initializes a User instance.
-    __initialize_log(self): Initializes a logger for the user account.
-    __initialize_driver(self, use_chrome=False): Initializes the Selenium WebDriver.
-    __generate_2factor_code(self, token): Generates a two-factor authentication code.
-    __accept_cookie(self, driver): Accepts cookies on the Instagram website.
-    __two_factor(self): Handles two-factor authentication.
-    login(self): Logs in to the user's Instagram account.
-    __exit_driver(self): Closes the Selenium WebDriver.
-    get_cookies(self, close_after=True): Retrieves cookies for the user's Instagram account.
-    __is_element_present(self, xpath, time_to_wait): Checks if an element is present on the page.
-    send_msg(self, to_username, msg): Sends a direct message to another user.
-
-The LOCATORS dictionary contains XPath locators for various elements on the Instagram website.
-
 ## Notes
 If you have any questions or feedback feel free to contact me.
 
