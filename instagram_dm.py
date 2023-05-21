@@ -242,7 +242,7 @@ class User:
             return self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'],0)
         
         def check_if_freezed():
-                return self.__is_element_present(LOCATORS["dm_error_present"],0)
+            return self.__is_element_present(LOCATORS["dm_error_present"],0)
                 
 
         try:
@@ -274,8 +274,11 @@ class User:
            
             wait = WebDriverWait(self.driver, 10)
             username_path = LOCATORS["dm_select_user"].format(to_username)
-            username_element = wait.until(EC.presence_of_element_located((By.XPATH, username_path)))
-            username_element.click()
+            try:
+                username_element = wait.until(EC.presence_of_element_located((By.XPATH, username_path)))
+                username_element.click()
+            except:
+                self.logger.error("cant select user from list")
 
             next_btn = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["dm_start_chat_btn"])))
             self.driver.execute_script("arguments[0].click();", next_btn)
@@ -295,8 +298,8 @@ class User:
             send_btn = self.driver.find_element("xpath",LOCATORS["dm_send_button"])
             send_btn.click()
 
-            if check_if_freezed:
-                self.logger.debug("acc freezed")
+            if check_if_freezed == True:
+                self.logger.warn("acc freezed")
                 return "freeze" 
             
             #TODO check if message popped up
