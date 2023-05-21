@@ -26,10 +26,10 @@ LOCATORS = {
             "dm_notification_present":"//span[text()='Turn on Notifications']",
             "dm_notification_disable":"//button[text()='Not Now']",
             "dm_send_button":"//div[@role='button' and text()='Send']",
-            "dm_error_present":"//p[text()='Something went wrong. Please try again.']",
+            "dm_error_present":"//*[contains(text(), 'IGD message send error icon')]",
             "2f_screen_present":"//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
             "2f_entering_error":"//p[@id='twoFactorErrorAlert' and @role='alert']",
-            "check_dm_message_sent_to_user":"//div[@role='listbox']//div//div//div[@role='button']",
+            "check_dm_message_sent_to_user":"//div[@role='none']//div//div//div[@role='button']",
             "login_error":"//p[@id='slfErrorAlert']"
         }
 
@@ -241,6 +241,9 @@ class User:
         def check_dm_message_sent_to_user():
             return self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'],0)
         
+        def check_if_freezed():
+                return self.__is_element_present(LOCATORS["dm_error_present"],0)
+                
 
         try:
             self.logger.debug(f"send_msg() called with parameters to_username: {to_username}, msg: {msg}")
@@ -268,12 +271,7 @@ class User:
             search_user_field = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["dm_type_username"])))
             search_user_field.send_keys(to_username)
 
-            #if self.__is_element_present(LOCATORS["dm_user_not_found"],0):
-            #    self.logger.info(f"Account not found: {to_username}")
-            #    return "Account not found"
-            #returns true always
            
-            #
             wait = WebDriverWait(self.driver, 10)
             username_path = LOCATORS["dm_select_user"].format(to_username)
             username_element = wait.until(EC.presence_of_element_located((By.XPATH, username_path)))
@@ -282,33 +280,27 @@ class User:
             next_btn = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["dm_start_chat_btn"])))
             self.driver.execute_script("arguments[0].click();", next_btn)
 
-            wait_2 = WebDriverWait(self.driver, 5)
-            try:
-                # Look for the "Something went wrong" message
-                error_messages = wait_2.until(EC.presence_of_all_elements_located((By.XPATH,LOCATORS["dm_error_present"])))
-                for message in error_messages:
-                    if message.text == "Something went wrong. Please try again.":
-                        self.logger.debug("acc freezed")
+            
+            msg_field = wait.until(EC.presence_of_element_located((By.XPATH,LOCATORS["dm_msg_field"])))
+            
+            if check_dm_message:
+                if check_dm_message_sent_to_user():
+                    return 'already sent'
+            
+            action = ActionChains(self.driver)
+            action.move_to_element(msg_field)
+            action.click()
+            action.send_keys(msg)
+            action.perform()
+            send_btn = self.driver.find_element("xpath",LOCATORS["dm_send_button"])
+            send_btn.click()
 
-                        return "freeze" 
-            except:
-                msg_field = wait.until(EC.presence_of_element_located((By.XPATH,LOCATORS["dm_msg_field"])))
-                
-                if check_dm_message:
-                    if check_dm_message_sent_to_user():
-                        return 'already sent'
-                
-                action = ActionChains(self.driver)
-                action.move_to_element(msg_field)
-                action.click()
-                action.send_keys(msg)
-                action.perform()
-
-
-                send_btn = self.driver.find_element("xpath",LOCATORS["dm_send_button"])
-                send_btn.click()
-                #TODO check if message popped up
-                return "sent"  
+            if check_if_freezed:
+                self.logger.debug("acc freezed")
+                return "freeze" 
+            
+            #TODO check if message popped up
+            return "sent"  
             
         except:
             self.logger.exception("send_msg()")
