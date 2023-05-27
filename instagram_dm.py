@@ -8,7 +8,7 @@ import time
 import logging
 import sys
 import pyotp
-
+from selenium.common.exceptions import StaleElementReferenceException
 from firefox_setup import initialize_driver
 
 
@@ -19,7 +19,7 @@ LOCATORS = {
             "login_password_field":"//input[@name='password']",
             "new_dm_btn":"//div[@role= 'button'][.//div//*//*[text()='New message']]",
             "dm_type_username":"//input[@placeholder='Search...']",
-            "dm_select_user":'//span/div/span[text()="{}"]',
+            "dm_select_user":'//span/span/span[text()="{}"]',
             "dm_user_not_found":"//span[text()='No account found.']",
             "dm_start_chat_btn": "//div/div[text()='Chat' and @role='button']",
             "dm_msg_field":"//div[@role='textbox' and @aria-label='Message']",
@@ -111,12 +111,17 @@ class User:
         self.logger.debug(f"__accept_cookie() called with parameters: driver={driver}" )
         try:
             driver.get('https://instagram.com/')
-            if self.wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["cookie_text"]))):
+            try:
+                cookie_elem = self.wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["cookie_text"])))
+            except:
+                self.logger.warning("No cookies to accept!")
+                return True
+            
+            if cookie_elem:
                 driver.find_element("xpath",LOCATORS["cookie_accept"]).click()
                 self.logger.debug("cookie accepted")
                 sleep(2)
-            else:
-                self.logger.warning("No cookies to accept!")
+            
         except:
             self.logger.exception("__accept_cookie")
     
@@ -163,11 +168,12 @@ class User:
             username_field.send_keys(self.username)
             password_field.send_keys(self.password)
             password_field.send_keys(Keys.RETURN)
-            
+            print("aaaaaaa")
             if self.__is_element_present(LOCATORS['login_error'],5):
                 self.logger.error(f"There was a problem logging you into Instagram. Please try again soon.")
+                print("ddddddd")
                 return "There was a problem logging you into Instagram. Please try again soon."
-
+            print("aaaadawdawdawaaaa")
 
             #wait for instagram to login
             while True:
@@ -242,7 +248,7 @@ class User:
             return self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'],0)
         
         def check_if_freezed():
-            return self.__is_element_present(LOCATORS["dm_error_present"],0)
+            return self.__is_element_present(LOCATORS["dm_error_present"],3)
                 
 
         try:
@@ -279,17 +285,35 @@ class User:
                 username_element.click()
             except:
                 self.logger.error("cant select user from list")
+                return "No account found."
 
             next_btn = wait.until(EC.presence_of_element_located((By.XPATH, LOCATORS["dm_start_chat_btn"])))
+            last_url = self.driver.current_url
+
             self.driver.execute_script("arguments[0].click();", next_btn)
 
             
+            tries = 0
+            changed = False
+            while tries < 50:
+                sleep(0.5)
+                if last_url == self.driver.current_url:
+                    tries += 1
+                    continue
+                else:
+                    changed = True
+                    break
+            
+            if changed == False:
+                self.logger.error("cant access the new url")
+                return "url problem"
+                    
             msg_field = wait.until(EC.presence_of_element_located((By.XPATH,LOCATORS["dm_msg_field"])))
             
             if check_dm_message:
                 if check_dm_message_sent_to_user():
                     return 'already sent'
-            
+                
             action = ActionChains(self.driver)
             action.move_to_element(msg_field)
             action.click()
@@ -298,19 +322,17 @@ class User:
             send_btn = self.driver.find_element("xpath",LOCATORS["dm_send_button"])
             send_btn.click()
 
-            if check_if_freezed == True:
+
+            
+            if check_if_freezed() == True:
                 self.logger.warn("acc freezed")
-                return "freeze" 
-            
-            #TODO check if message popped up
-            return "sent"  
-            
+                return "freeze"
+            return "sent"
+
+                
+
         except:
             self.logger.exception("send_msg()")
-            return 'error'
-        
-        
-        
-    
-        
-        
+            return "error"
+
+ 
