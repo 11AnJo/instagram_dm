@@ -29,7 +29,7 @@ LOCATORS = {
             "dm_error_present":"//*[contains(text(), 'IGD message send error icon')]",
             "2f_screen_present":"//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
             "2f_entering_error":"//p[@id='twoFactorErrorAlert' and @role='alert']",
-            "check_dm_message_sent_to_user":"//div[@role='none']//div//div//div[@role='button']",
+            "check_dm_message_sent_to_user":"//div[@role='none']//div[@dir='auto' and @role='none']",
             "login_error":"//p[@id='slfErrorAlert']"
         }
 
@@ -245,7 +245,7 @@ class User:
 
     def send_msg(self,to_username,msg,check_dm_message=False):
         def check_dm_message_sent_to_user():
-            return self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'],0)
+            return self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'],2)
         
         def check_if_freezed():
             return self.__is_element_present(LOCATORS["dm_error_present"],3)
@@ -327,6 +327,7 @@ class User:
             if check_if_freezed() == True:
                 self.logger.warn("acc freezed")
                 return "freeze"
+            # If the action is successful, break the loop    
             return "sent"
 
                 
@@ -335,4 +336,10 @@ class User:
             self.logger.exception("send_msg()")
             return "error"
 
- 
+        
+        
+        
+        
+    
+        
+        
