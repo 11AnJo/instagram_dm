@@ -14,9 +14,6 @@ To use this script, you need to have the following Python packages installed:
     selenium
     pyotp
 
-You can install them using the following command:
-
-    pip install selenium pyotp
 
 ## Usage - Check Examples Folder
 
