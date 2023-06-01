@@ -33,6 +33,11 @@ LOCATORS = {
             "login_error":"//p[@id='slfErrorAlert']"
         }
 
+class WaitAndClickException(Exception):
+    pass
+
+class WaitException(Exception):
+    pass
 
 class User:
     def __init__(self,username,password,token=False,debug=False, use_chrome=False,Name="Acc"):
@@ -197,6 +202,95 @@ class User:
     
         except:
             self.logger.exception("login")
+
+    
+    def __wait_and_click(self, xpath,time=5):
+        self.logger.debug(f'__wait_and_click() - called with xpath: {xpath}, time: {time}')
+        try:
+            button = WebDriverWait(self.driver, time).until(EC.element_to_be_clickable((By.XPATH, xpath)))
+            button.click()
+            self.logger.debug(f"Clicked the element with xpath: {xpath}")
+        except Exception as e:
+            self.logger.debug(f"Could not click the element with xpath: {xpath}. Error: {str(e)}")
+            raise WaitAndClickException(f"Stopping execution due to failure to click on element: {xpath}") from e
+
+
+    def __wait(self, xpath,time=5):
+        self.logger.debug(f'__wait() - called with xpath: {xpath}, time: {time}')
+        try:
+            return WebDriverWait(self.driver, time).until(EC.presence_of_element_located((By.XPATH, xpath)))
+        except Exception as e:
+            self.logger.debug(f"Could not wait for the element with xpath: {xpath}. Error: {str(e)}")
+            raise WaitException(f"Stopping execution due to failure in waiting for element: {xpath}") from e
+
+
+
+    def get_suggestions(self,username):
+        def get_all_usernames():
+            usernames = set()
+            repeated_count = 0
+            threshold = 5  # Adjust the threshold as needed
+            
+            while True:
+                elements = self.wait.until(EC.presence_of_all_elements_located((By.XPATH, '//a//div//span//div')))
+                old_len = len(usernames)
+                for el in elements:
+                    try:
+                        # Get the text of the element
+                        text = el.text
+                        
+                        # Skip if the username contains 'Verified'
+                        if 'Verified' in text:
+                            continue
+                        
+                        # Add the username to the set
+                        usernames.add(text)
+                    except StaleElementReferenceException:
+                        continue
+                    
+                if old_len == len(usernames):
+                    repeated_count += 1
+                    if repeated_count >= threshold:
+                        break
+                else:
+                    repeated_count = 0
+                
+                # Scroll down to load more usernames
+                self.driver.execute_script("arguments[0].scrollIntoView();", elements[-1])
+                time.sleep(1)  # Adjust the sleep time as needed
+                
+            return usernames
+
+
+
+
+        LOCATORS_SUGGESTIONS = {
+        'suggest_button':"//div[@role='button']//div//*[local-name() = 'svg']",
+        'see_all_button':"//a[@role='link']//span[@dir='auto' and text()='See all']",
+        'similar_acc_presence':"//div[text()='Similar Accounts']",
+        'err_unable_to_load':"//div[text()='Unable to load suggestions.']"
+        }
+
+        try:
+
+            self.logger.debug(f"get_suggestions() - called with username: {username}")
+
+            self.driver.get(f'https://www.instagram.com/{username}')
+
+            self.__wait_and_click(LOCATORS_SUGGESTIONS['suggest_button'])
+            self.__wait_and_click(LOCATORS_SUGGESTIONS['see_all_button'])
+            if self.__is_element_present(LOCATORS_SUGGESTIONS['err_unable_to_load'],3):
+                return 'acc locked'
+            self.__wait(LOCATORS_SUGGESTIONS['similar_acc_presence'])
+            return get_all_usernames()
+
+        except WaitAndClickException as e:
+            self.logger.error(f"get_suggestions() - Stopping execution. Error: {str(e)}")
+            return False
+        except WaitException as e:
+            self.logger.error(f"get_suggestions() - Stopping execution. Error: {str(e)}")
+            return False
+
 
 
     def __exit_driver(self):
