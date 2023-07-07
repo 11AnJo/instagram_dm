@@ -265,9 +265,10 @@ class User:
 
 
         LOCATORS_SUGGESTIONS = {
+        'page_unavailable':"//span[text()='Sorry, this page isn't available.']",
         'suggest_button':"//div[@role='button']//div//*[local-name() = 'svg']",
         'see_all_button':"//a[@role='link']//span[@dir='auto' and text()='See all']",
-        'similar_acc_presence':"//div[text()='Similar Accounts']",
+        'similar_acc_presence':"//div[text()='Suggested for you']",
         'err_unable_to_load':"//div[text()='Unable to load suggestions.']"
         }
 
@@ -276,11 +277,19 @@ class User:
             self.logger.debug(f"get_suggestions() - called with username: {username}")
 
             self.driver.get(f'https://www.instagram.com/{username}')
-
-            self.__wait_and_click(LOCATORS_SUGGESTIONS['suggest_button'])
-            self.__wait_and_click(LOCATORS_SUGGESTIONS['see_all_button'])
+            try:
+                self.__wait_and_click(LOCATORS_SUGGESTIONS['suggest_button'])
+            except WaitAndClickException:
+                if self.__is_element_present(LOCATORS_SUGGESTIONS["page_unavailable"]):
+                    self.logger.debug("Profile is unavailable")
+                    return "Profile is unavailable"
+                self.logger.exception("AJAJ")
+                
             if self.__is_element_present(LOCATORS_SUGGESTIONS['err_unable_to_load'],3):
                 return 'acc locked'
+
+            self.__wait_and_click(LOCATORS_SUGGESTIONS['see_all_button'])
+            
             self.__wait(LOCATORS_SUGGESTIONS['similar_acc_presence'])
             return get_all_usernames()
 
