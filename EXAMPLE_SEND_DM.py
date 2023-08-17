@@ -1,13 +1,10 @@
 from instagram_dm import User
 
-USERNAME = ""
-PASSWORD = ""
-_2F_TOKEN = ""
+profile_name = ""
 DEBUG = False
 
 
-user = User(username=USERNAME, password=PASSWORD, token=_2F_TOKEN, debug=DEBUG)
-user.login()
+user = User(profile_name=profile_name, debug=DEBUG)
 
 
 TO_USER = ""

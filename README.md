@@ -4,36 +4,31 @@ This script provides a way to automate sending direct messages on Instagram usin
 
 ## Dependencies
 
-Download newest geckodriver version from 
-    https://github.com/mozilla/geckodriver/releases 
-and drop it to your project folder
-
-
 To use this script, you need to have the following Python packages installed:
 
     selenium
-    pyotp
+    undetected-chromedriver
+    requests
 
+You can install them using the following command:
+
+    pip3 install selenium undetected-chromedriver requests
 
 ## Usage - Check Examples Folder
 
 Import the User class from the script:
 ````py
-from instagram_dm import User
+from instagram_web import User
 ````
 
-Create an instance of the User class, passing your Instagram username and password:
+Create an instance of the User class and an linked chrome profile:
 
 ````py
-user = User(username="your_username", password="your_password", token="your_2FA_token_if_any", debug=False)
+user = User(profile_name="ACC PROFILE NAME", debug=False)
 ````
-If you have two-factor authentication enabled, replace "your_2FA_token_if_any" with your actual 2FA token. Otherwise, set the token parameter to False. Make debug=True if needed.
 
-Log in to your Instagram account:
+You have to log in to your Instagram account by yourself but you can access it starting again with same profile name:
 
-````py
-user.login()
-````
 
 Send a direct message to another user:
 ```py
