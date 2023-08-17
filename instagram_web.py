@@ -57,31 +57,36 @@ class User:
     
 
     def __initialize_log(self):
-        logger = logging.getLogger(f"instagram_web - {self.profile_name}")
+        logger = logging.getLogger(f"main")
+
+        logger.setLevel(logging.DEBUG)
+
         if self.debug:
-            logger.setLevel(logging.DEBUG)
+            stream_level = logging.DEBUG
         else:
-            logger.setLevel(logging.INFO)
+            stream_level = logging.INFO
 
         stream_handler = logging.StreamHandler(sys.stdout)
-        stream_handler.setLevel(logging.DEBUG)
+        stream_handler.setLevel(stream_level)
 
         newly_created = False
-        if os.path.isdir('./log'):
-            pass
-        else:
+        if not os.path.isdir('./log'):
             newly_created = True
             os.makedirs('./log')
+
         file_handler = logging.FileHandler(f'log/{self.profile_name}.log')
         file_handler.setLevel(logging.DEBUG)
+
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         stream_handler.setFormatter(formatter)
         file_handler.setFormatter(formatter)
+
         logger.addHandler(stream_handler)
         logger.addHandler(file_handler)
 
         if newly_created:
             logger.debug("log folder was not found. Created new one")
+
         return logger
 
 
