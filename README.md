@@ -1,6 +1,8 @@
 # Instagram Direct Message Bot
 
-This script provides a way to automate sending direct messages on Instagram using the Selenium library in Python. The script supports chrome profiles for saving logged in account and utilizes a custom User class to manage the user account.
+This script provides a way to automate certain actiivties on Instagram i.e. sending direct messages.
+Support for chrome profiles - automatic logging in and manual logging in.
+Its written using Selenium library in Python and its utilizing undetected-chromedriver (also works good with normal chromedriver). 
 
 ## Dependencies
 
@@ -21,21 +23,29 @@ Import the User class from the script:
 from instagram_web import User
 ````
 
-Create an instance of the User class and an linked chrome profile:
+Create an instance of the User class:
 
 ````py
-user = User(profile_name="ACC PROFILE NAME", debug=False)
+ #To use chrome profiles
+user = User(profile_name="profile_name", debug=False)                                                      
+
+ #To use it to login automatically
+user = User(username="your_username",password="your_password",token="your_2fa_token(optional)", debug=False)   
+
+#To use both chrome profiles and aoutomatic login  
+user = User(profile_name="profile_name",username="your_username",password="your_password",token="your_2fa_token(optional)", debug=False)
+
+#You dont have to use profiles or automatic login but you would have to login every time by yourself
+user = User(debug=False)    
 ````
 
-You have to log in to your Instagram account by yourself but you can access it starting again with same profile name:
 
 #
 Send a direct message to another user:
 ```py
 user.send_msg(to_username="recipient_username", msg="Your message here")
 ````
-Replace "recipient_username" with the actual Instagram username of the recipient.
-Replace "Your message here" with the actual message you want to send.
+
 
 
 Get session cookies (may use for a requesting directly from instagram api)
