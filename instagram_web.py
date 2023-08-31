@@ -1,5 +1,4 @@
 from selenium import webdriver as uc
-
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -8,40 +7,44 @@ from selenium.webdriver.common.action_chains import ActionChains
 from time import sleep
 import time
 import logging
-import sys, os
+import sys
+import os
 from selenium.common.exceptions import StaleElementReferenceException
 import pyotp
 
 LOCATORS = {
-            "cookie_accept":"//button[text()='Decline optional cookies']",
-            "cookie_text":"//*[text()='Allow the use of cookies from Instagram on this browser?']",
-            "login_username_field":"//input[@name='username']",
-            "login_password_field":"//input[@name='password']",
-            "new_dm_btn":"//div[@role= 'button'][.//div//*//*[text()='New message']]",
-            "dm_type_username":"//input[@placeholder='Search...']",
-            "dm_select_user":'//span/span/span[text()="{}"]',
-            "dm_user_not_found":"//span[text()='No account found.']",
-            "dm_start_chat_btn": "//div/div[text()='Chat' and @role='button']",
-            "dm_msg_field":"//div[@role='textbox' and @aria-label='Message']",
-            "dm_notification_present":"//span[text()='Turn on Notifications']",
-            "dm_notification_disable":"//button[text()='Not Now']",
-            "dm_send_button":"//div[@role='button' and text()='Send']",
-            "dm_error_present":"//*[text()='IGD message send error icon']",
-            "2f_screen_present":"//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
-            "2f_entering_error":"//p[@id='twoFactorErrorAlert' and @role='alert']",
-            "check_dm_message_sent_to_user":"//div[@role='none']//div[@dir='auto' and @role='none']",
-            "login_error":"//p[@id='slfErrorAlert']",
-            "save_login_info":"//button[text()='Save Info']"
-        }
+    "cookie_accept": "//button[text()='Decline optional cookies']",
+    "cookie_text": "//*[text()='Allow the use of cookies from Instagram on this browser?']",
+    "login_username_field": "//input[@name='username']",
+    "login_password_field": "//input[@name='password']",
+    "new_dm_btn": "//div[@role= 'button'][.//div//*//*[text()='New message']]",
+    "dm_type_username": "//input[@placeholder='Search...']",
+    "dm_select_user": '//span/span/span[text()="{}"]',
+    "dm_user_not_found": "//span[text()='No account found.']",
+    "dm_start_chat_btn": "//div/div[text()='Chat' and @role='button']",
+    "dm_msg_field": "//div[@role='textbox' and @aria-label='Message']",
+    "dm_notification_present": "//span[text()='Turn on Notifications']",
+    "dm_notification_disable": "//button[text()='Not Now']",
+    "dm_send_button": "//div[@role='button' and text()='Send']",
+    "dm_error_present": "//*[text()='IGD message send error icon']",
+    "2f_screen_present": "//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
+    "2f_entering_error": "//p[@id='twoFactorErrorAlert' and @role='alert']",
+    "check_dm_message_sent_to_user": "//div[@role='none']//div[@dir='auto' and @role='none']",
+    "login_error": "//p[@id='slfErrorAlert']",
+    "save_login_info": "//button[text()='Save Info']"
+}
+
 
 class WaitAndClickException(Exception):
     pass
 
+
 class WaitException(Exception):
     pass
 
+
 class User:
-    def __init__(self,profile_name=None,username=None,password=None,token=None,debug=False,starting_page='https://www.instagram.com/direct/'):
+    def __init__(self, profile_name=None, username=None, password=None, token=None, debug=False, starting_page='https://www.instagram.com/direct/'):
         self.cookies_dict = None
         self.profile_name = profile_name
         self.username = username
@@ -49,19 +52,16 @@ class User:
         self.token = token
         self.starting_page = starting_page
         self.is_logged = False
-        
+
         self.debug = debug
         self.logger = self.__initialize_log()
 
-        self.driver = None#self.__init_driver()
-        #self.driver.get(starting_page)
-
-        
-
-    
+        self.driver = None  # self.__init_driver()
+        # self.driver.get(starting_page)
 
     def __initialize_log(self):
-        logger = logging.getLogger(f"instagram_web - {self.profile_name if self.profile_name else self.username}")
+        logger = logging.getLogger(
+            f"instagram_web - {self.profile_name if self.profile_name else self.username}")
         if self.debug:
             logger.setLevel(logging.DEBUG)
         else:
@@ -74,9 +74,11 @@ class User:
         else:
             newly_created = True
             os.makedirs('./log')
-        file_handler = logging.FileHandler(f'log/{self.profile_name if self.profile_name else self.username}.log')
+        file_handler = logging.FileHandler(
+            f'log/{self.profile_name if self.profile_name else self.username}.log')
         file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         stream_handler.setFormatter(formatter)
         file_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
@@ -84,7 +86,7 @@ class User:
         if newly_created:
             logger.debug("log folder was not found. Created new one")
         return logger
-    
+
     def __make_sure_its_logged(self):
         if self.driver == None:
             self.logger.info("driver not active")
@@ -98,45 +100,56 @@ class User:
         options = uc.ChromeOptions()
         if self.profile_name:
             data_dir = f"{os.getcwd()}/profiles/{self.profile_name}"
-            options.add_argument(f"--user-data-dir={data_dir}") #e.g. C:\Users\You\AppData\Local\Google\Chrome\User Data
-        #options.add_argument(r'--profile-directory=YourProfileDir') #e.g. Profile 3
+            # e.g. C:\Users\You\AppData\Local\Google\Chrome\User Data
+            options.add_argument(f"--user-data-dir={data_dir}")
+        # options.add_argument(r'--profile-directory=YourProfileDir') #e.g. Profile 3
         self.driver = uc.Chrome(options=options)
-        
-            
+
         return self.driver
-    
-    def __wait_and_click(self, xpath,time=5):
-        self.logger.debug(f'__wait_and_click() - called with xpath: {xpath}, time: {time}')
+
+    def __wait_and_click(self, xpath, time=5):
+        self.logger.debug(
+            f'__wait_and_click() - called with xpath: {xpath}, time: {time}')
         try:
-            button = WebDriverWait(self.driver, time).until(EC.element_to_be_clickable((By.XPATH, xpath)))
+            button = WebDriverWait(self.driver, time).until(
+                EC.element_to_be_clickable((By.XPATH, xpath)))
             button.location_once_scrolled_into_view
             button.click()
             self.logger.debug(f"Clicked the element with xpath: {xpath}")
         except Exception as e:
-            self.logger.debug(f"Could not click the element with xpath: {xpath}. Error: {str(e)}")
-            raise WaitAndClickException(f"Stopping execution due to failure to click on element: {xpath}") from e
+            self.logger.debug(
+                f"Could not click the element with xpath: {xpath}. Error: {str(e)}")
+            raise WaitAndClickException(
+                f"Stopping execution due to failure to click on element: {xpath}") from e
 
-    def __wait(self, xpath,time=5):
-        self.logger.debug(f'__wait() - called with xpath: {xpath}, time: {time}')
+    def __wait(self, xpath, time=5):
+        self.logger.debug(
+            f'__wait() - called with xpath: {xpath}, time: {time}')
 
         try:
             return WebDriverWait(self.driver, time).until(EC.presence_of_element_located((By.XPATH, xpath)))
         except Exception as e:
-            self.logger.debug(f"Could not wait for the element with xpath: {xpath}. Error: {str(e)}")
-            raise WaitException(f"Stopping execution due to failure in waiting for element: {xpath}") from e
+            self.logger.debug(
+                f"Could not wait for the element with xpath: {xpath}. Error: {str(e)}")
+            raise WaitException(
+                f"Stopping execution due to failure in waiting for element: {xpath}") from e
 
-    def __wait_for_all(self, xpath,time=5):
-        self.logger.debug(f'__wait_for_all() - called with xpath: {xpath}, time: {time}')
+    def __wait_for_all(self, xpath, time=5):
+        self.logger.debug(
+            f'__wait_for_all() - called with xpath: {xpath}, time: {time}')
 
         try:
             return WebDriverWait(self.driver, time).until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
         except Exception as e:
-            self.logger.debug(f"Could not wait for the element with xpath: {xpath}. Error: {str(e)}")
-            raise WaitException(f"Stopping execution due to failure in waiting for element: {xpath}") from e
+            self.logger.debug(
+                f"Could not wait for the element with xpath: {xpath}. Error: {str(e)}")
+            raise WaitException(
+                f"Stopping execution due to failure in waiting for element: {xpath}") from e
 
     def __is_element_present(self, xpath, time_to_wait=0) -> bool:
-        self.logger.debug(f"__is_element_present() called with parameters: xpath: {xpath} time to wait: {time_to_wait}")
-        
+        self.logger.debug(
+            f"__is_element_present() called with parameters: xpath: {xpath} time to wait: {time_to_wait}")
+
         wait = WebDriverWait(self.driver, time_to_wait)
         try:
             wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
@@ -145,69 +158,68 @@ class User:
         except:
             self.logger.debug("__is_element_present() returning False")
             return False
-        
-    def __paste_text(self,xpath,text,time_to_wait=0):
-        self.logger.debug(f"__paste_text() called with xpath: {xpath}, text: {text}")
-        
+
+    def __paste_text(self, xpath, text, time_to_wait=0):
+        self.logger.debug(
+            f"__paste_text() called with xpath: {xpath}, text: {text}")
+
         action = ActionChains(self.driver)
-        action.move_to_element(self.__wait(xpath,time_to_wait))
+        action.move_to_element(self.__wait(xpath, time_to_wait))
         action.click()
         action.send_keys(text)
         action.perform()
 
-    def get_suggestions(self,username):
-        if self.driver == None:
-            self.__init_driver()
+    def get_suggestions(self, username):
+        self.__make_sure_its_logged()
 
         def get_all_usernames():
             usernames = set()
             repeated_count = 0
             threshold = 5  # Adjust the threshold as needed
-            
+
             while True:
-                elements = self.wait.until(EC.presence_of_all_elements_located((By.XPATH, '//a//div//span//div')))
+                elements = self.__wait_for_all('//a//div//span//div')
                 old_len = len(usernames)
                 for el in elements:
                     try:
                         # Get the text of the element
                         text = el.text
-                        
+
                         # Skip if the username contains 'Verified'
                         if 'Verified' in text:
                             continue
-                        
+
                         # Add the username to the set
                         usernames.add(text)
                     except StaleElementReferenceException:
                         continue
-                    
+
                 if old_len == len(usernames):
                     repeated_count += 1
                     if repeated_count >= threshold:
                         break
                 else:
                     repeated_count = 0
-                
+
                 # Scroll down to load more usernames
-                self.driver.execute_script("arguments[0].scrollIntoView();", elements[-1])
+                self.driver.execute_script(
+                    "arguments[0].scrollIntoView();", elements[-1])
                 time.sleep(1)  # Adjust the sleep time as needed
-                
+
             return usernames
 
-
-
-
         LOCATORS_SUGGESTIONS = {
-        'page_unavailable':"//span[text()='Sorry, this page isn't available.']",
-        'suggest_button':"//div[@role='button']//div//*[local-name() = 'svg']",
-        'see_all_button':"//a[@role='link']//span[@dir='auto' and text()='See all']",
-        'similar_acc_presence':"//div[text()='Suggested for you']",
-        'err_unable_to_load':"//div[text()='Unable to load suggestions.']"
+            'page_unavailable': "//span[text()='Sorry, this page isn't available.']",
+            'suggest_button': "//div[@role='button']//div//*[local-name() = 'svg']",
+            'see_all_button': "//a[@role='link']//span[@dir='auto' and text()='See all']",
+            'similar_acc_presence': "//div[text()='Discover more accounts']",
+            'err_unable_to_load': "//div[text()='Unable to load suggestions.']"
         }
 
         try:
 
-            self.logger.debug(f"get_suggestions() - called with username: {username}")
+            self.logger.debug(
+                f"get_suggestions() - called with username: {username}")
 
             self.driver.get(f'https://www.instagram.com/{username}')
             try:
@@ -217,20 +229,22 @@ class User:
                     self.logger.debug("Profile is unavailable")
                     return "Profile is unavailable"
                 self.logger.exception("AJAJ")
-                
-            if self.__is_element_present(LOCATORS_SUGGESTIONS['err_unable_to_load'],3):
+
+            if self.__is_element_present(LOCATORS_SUGGESTIONS['err_unable_to_load'], 3):
                 return 'acc locked'
 
             self.__wait_and_click(LOCATORS_SUGGESTIONS['see_all_button'])
-            
+
             self.__wait(LOCATORS_SUGGESTIONS['similar_acc_presence'])
             return get_all_usernames()
 
         except WaitAndClickException as e:
-            self.logger.error(f"get_suggestions() - Stopping execution. Error: {str(e)}")
+            self.logger.error(
+                f"get_suggestions() - Stopping execution. Error: {str(e)}")
             return False
         except WaitException as e:
-            self.logger.error(f"get_suggestions() - Stopping execution. Error: {str(e)}")
+            self.logger.error(
+                f"get_suggestions() - Stopping execution. Error: {str(e)}")
             return False
 
     def exit_driver(self):
@@ -239,7 +253,7 @@ class User:
         self.driver = None
         self.is_logged = False
 
-    def get_cookies(self,close_after=True):
+    def get_cookies(self, close_after=True):
         self.__make_sure_its_logged()
 
         def transform_cookies(cookies):
@@ -247,12 +261,14 @@ class User:
             cookie_str = ""
             for cookie in cookies:
                 cookie_str += cookie['name'] + "=" + cookie['value'] + "; "
-            headers["Cookie"] = cookie_str[:-2]  # remove the last semicolon and space
-            headers["X-Ig-App-Id"]="936619743392459"        # <---------------------
+            # remove the last semicolon and space
+            headers["Cookie"] = cookie_str[:-2]
+            # <---------------------
+            headers["X-Ig-App-Id"] = "936619743392459"
             return headers
-    
+
         try:
-            
+
             cookies = self.driver.get_cookies()
             cookies_dict = transform_cookies(cookies)
             if close_after:
@@ -262,8 +278,8 @@ class User:
             return cookies_dict
         except:
             self.logger.exception("get_cookies")
-    
-    def __generate_2factor_code(self,token):
+
+    def __generate_2factor_code(self, token):
         totp = pyotp.TOTP(token)
         current_time = time.time()
         time_step = 30  # TOTP time step, usually 30 seconds
@@ -277,9 +293,9 @@ class User:
         return new_code+"\n"
 
     def __accept_cookie(self):
-        self.logger.debug(f"__accept_cookie() called" )
+        self.logger.debug(f"__accept_cookie() called")
         try:
-            self.__wait_and_click(LOCATORS["cookie_accept"],2)
+            self.__wait_and_click(LOCATORS["cookie_accept"], 2)
         except WaitAndClickException:
             self.logger.info("No cookies to accept")
 
@@ -287,25 +303,26 @@ class User:
         url = self.driver.current_url
         self.logger.debug("looking for 2f")
         try:
-            self.__paste_text(LOCATORS['2f_screen_present'],self.__generate_2factor_code(self.token),time_to_wait=5)
+            self.__paste_text(LOCATORS['2f_screen_present'], self.__generate_2factor_code(
+                self.token), time_to_wait=5)
 
         except WaitException:
-            self.logger.info("2factor not found") 
+            self.logger.info("2factor not found")
             return True
-        
-        if self.__is_element_present(LOCATORS['2f_entering_error'],2):
+
+        if self.__is_element_present(LOCATORS['2f_entering_error'], 2):
             self.logger.error("2f_entering_error")
             sleep(5)
             self.__two_factor()
-            
+
         for _ in range(10):
             if self.driver.current_url != url:
                 return True
-            
+
             sleep(1)
         self.logger.error("after entering code no change in url")
         return "cannot login"
-        
+
     def login(self):
         if self.driver == None:
             self.driver = self.__init_driver()
@@ -314,12 +331,12 @@ class User:
         if self.driver.current_url == 'https://www.instagram.com/direct/':
             self.is_logged = True
             return True
-        
 
         if self.username == None and self.password == None:
             self.driver.get('https://instagram.com/accounts/login')
 
-            self.logger.info("Username and password not specified. Please login by yourself")
+            self.logger.info(
+                "Username and password not specified. Please login by yourself")
             while True:
                 sleep(0.5)
                 if "instagram.com/accounts/onetap" in self.driver.current_url:
@@ -328,7 +345,8 @@ class User:
                     self.driver.get("https://www.instagram.com/direct/inbox")
 
                     try:
-                        self.__wait_and_click(LOCATORS["dm_notification_disable"],3)
+                        self.__wait_and_click(
+                            LOCATORS["dm_notification_disable"], 3)
                     except WaitAndClickException:
                         self.logger.info("No dm notification")
                     self.logger.info(f"Login succesfull to")
@@ -339,19 +357,20 @@ class User:
             self.driver.get('https://instagram.com/accounts/login')
 
             self.__accept_cookie()
-            self.__wait(LOCATORS["login_username_field"],1).send_keys(self.username)
-            a = self.__wait(LOCATORS["login_password_field"],1)
+            self.__wait(LOCATORS["login_username_field"],
+                        1).send_keys(self.username)
+            a = self.__wait(LOCATORS["login_password_field"], 1)
             a.send_keys(self.password)
             a.send_keys(Keys.ENTER)
-            
-            #self.__paste_text(LOCATORS["login_username_field"],self.username,1)
-            #self.__paste_text(LOCATORS["login_password_field"],self.password)
-            
-            if self.__is_element_present(LOCATORS['login_error'],2):
-                self.logger.error(f"There was a problem logging you into Instagram. Please try again soon.")
+
+            # self.__paste_text(LOCATORS["login_username_field"],self.username,1)
+            # self.__paste_text(LOCATORS["login_password_field"],self.password)
+
+            if self.__is_element_present(LOCATORS['login_error'], 2):
+                self.logger.error(
+                    f"There was a problem logging you into Instagram. Please try again soon.")
                 return "There was a problem logging you into Instagram. Please try again soon."
-            
-                
+
             if self.token:
                 self.logger.debug("two factor is on, trying to login")
                 self.__two_factor()
@@ -359,31 +378,32 @@ class User:
             self.__wait_and_click(LOCATORS["save_login_info"])
 
             self.driver.get("https://www.instagram.com/direct/inbox")
-            
+
             try:
-                self.__wait_and_click(LOCATORS["dm_notification_disable"],3)
+                self.__wait_and_click(LOCATORS["dm_notification_disable"], 3)
             except WaitAndClickException:
                 self.logger.info("No dm notification")
             self.logger.info(f"Login succesfull to")
             self.is_logged = True
             return True
-                
+
         except:
             self.logger.exception("login")
 
-    def send_msg(self,to_username,msg,check_dm_message=False):
+    def send_msg(self, to_username, msg, check_dm_message=False):
         self.__make_sure_its_logged()
 
         def check_dm_message_sent_to_user():
-            return self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'],2)
-        
-        def check_if_freezed():
-            return self.__is_element_present(LOCATORS["dm_error_present"],3)
-                
-        try:
-            self.logger.debug(f"send_msg() called with parameters to_username: {to_username}, msg: {msg}")
+            return self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 2)
 
-            if not self.__is_element_present(LOCATORS["new_dm_btn"],0):
+        def check_if_freezed():
+            return self.__is_element_present(LOCATORS["dm_error_present"], 3)
+
+        try:
+            self.logger.debug(
+                f"send_msg() called with parameters to_username: {to_username}, msg: {msg}")
+
+            if not self.__is_element_present(LOCATORS["new_dm_btn"], 0):
                 self.driver.get("https://www.instagram.com/direct/")
 
             try:
@@ -395,7 +415,6 @@ class User:
             search_user_field = self.__wait(LOCATORS["dm_type_username"])
             search_user_field.send_keys(to_username)
 
-           
             username_path = LOCATORS["dm_select_user"].format(to_username)
             try:
                 self.__wait_and_click(username_path)
@@ -408,7 +427,6 @@ class User:
 
             self.driver.execute_script("arguments[0].click();", next_btn)
 
-            
             tries = 0
             changed = False
             while tries < 50:
@@ -419,35 +437,32 @@ class User:
                 else:
                     changed = True
                     break
-            
+
             if changed == False:
                 self.logger.error("cant access the new url")
                 return "url problem"
-                    
+
             msg_field = self.__wait(LOCATORS["dm_msg_field"])
-            
+
             if check_dm_message:
                 if check_dm_message_sent_to_user():
                     return 'already sent'
-                
+
             action = ActionChains(self.driver)
             action.move_to_element(msg_field)
             action.click()
             action.send_keys(msg+"\n")
             action.perform()
-            #send_btn = self.driver.find_element("xpath",LOCATORS["dm_send_button"])
-            #send_btn.click()
-            #msg_field.send_keys(Keys.ENTER)
-            
-            
+            # send_btn = self.driver.find_element("xpath",LOCATORS["dm_send_button"])
+            # send_btn.click()
+            # msg_field.send_keys(Keys.ENTER)
+
             if check_if_freezed() == True:
                 self.logger.warn("acc freezed")
                 return "freeze"
-            
-            # If the action is successful, break the loop    
-            return "sent"
 
-                
+            # If the action is successful, break the loop
+            return "sent"
 
         except:
             self.logger.exception("send_msg()")
