@@ -11,6 +11,7 @@ import sys
 import os
 from selenium.common.exceptions import StaleElementReferenceException
 import pyotp
+import re
 
 LOCATORS = {
     "cookie_accept": "//button[text()='Decline optional cookies']",
@@ -43,6 +44,9 @@ class WaitException(Exception):
     pass
 
 
+class BrokenChatException(Exception):
+    pass
+
 class User:
     def __init__(self, profile_name=None, username=None, password=None, token=None, debug=False, starting_page='https://www.instagram.com/direct/'):
         self.cookies_dict = None
@@ -56,8 +60,7 @@ class User:
         self.debug = debug
         self.logger = self.__initialize_log()
 
-        self.driver = None  # self.__init_driver()
-        # self.driver.get(starting_page)
+        self.driver = None
 
     def __initialize_log(self):
         logger = logging.getLogger(
@@ -75,7 +78,7 @@ class User:
             newly_created = True
             os.makedirs('./log')
         file_handler = logging.FileHandler(
-            f'log/{self.profile_name if self.profile_name else self.username}.log')
+            f'log/{self.profile_name if self.profile_name else self.username}.log', encoding='utf-8')
         file_handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -103,6 +106,7 @@ class User:
             # e.g. C:\Users\You\AppData\Local\Google\Chrome\User Data
             options.add_argument(f"--user-data-dir={data_dir}")
         # options.add_argument(r'--profile-directory=YourProfileDir') #e.g. Profile 3
+        options.add_argument("--lang=en_US")
         self.driver = uc.Chrome(options=options)
 
         return self.driver
@@ -122,12 +126,12 @@ class User:
             raise WaitAndClickException(
                 f"Stopping execution due to failure to click on element: {xpath}") from e
 
-    def __wait(self, xpath, time=5):
+    def __wait(self, xpath, time=5, webelement=""):
         self.logger.debug(
             f'__wait() - called with xpath: {xpath}, time: {time}')
 
         try:
-            return WebDriverWait(self.driver, time).until(EC.presence_of_element_located((By.XPATH, xpath)))
+            return WebDriverWait(self.driver if webelement == "" else webelement, time).until(EC.presence_of_element_located((By.XPATH, xpath)))
         except Exception as e:
             self.logger.debug(
                 f"Could not wait for the element with xpath: {xpath}. Error: {str(e)}")
@@ -146,11 +150,11 @@ class User:
             raise WaitException(
                 f"Stopping execution due to failure in waiting for element: {xpath}") from e
 
-    def __is_element_present(self, xpath, time_to_wait=0) -> bool:
+    def __is_element_present(self, xpath, time_to_wait=0, webelement="") -> bool:
         self.logger.debug(
             f"__is_element_present() called with parameters: xpath: {xpath} time to wait: {time_to_wait}")
 
-        wait = WebDriverWait(self.driver, time_to_wait)
+        wait = WebDriverWait(self.driver if webelement == "" else webelement, time_to_wait)
         try:
             wait.until(EC.presence_of_element_located((By.XPATH, xpath)))
             self.logger.debug("__is_element_present() returning True")
@@ -304,7 +308,7 @@ class User:
         self.logger.debug("looking for 2f")
         try:
             self.__paste_text(LOCATORS['2f_screen_present'], self.__generate_2factor_code(
-                self.token), time_to_wait=5)
+                self.token), time_to_wait=10)
 
         except WaitException:
             self.logger.info("2factor not found")
@@ -375,7 +379,8 @@ class User:
                 self.logger.debug("two factor is on, trying to login")
                 self.__two_factor()
 
-            self.__wait_and_click(LOCATORS["save_login_info"])
+            self.__wait_and_click(LOCATORS["save_login_info"],10)
+            sleep(2)
 
             self.driver.get("https://www.instagram.com/direct/inbox")
 
@@ -389,6 +394,33 @@ class User:
 
         except:
             self.logger.exception("login")
+
+    def __get_id_from_url(self,url):
+        self.logger.debug(f"__get_id_from_url() called with: url: {url}")
+        match = re.search(r"https://www\.instagram\.com/direct/t/(\d+)/", url)
+        if match:
+            message_id = match.group(1)
+            self.logger.debug(f"Message ID: {message_id}")
+            return message_id
+        else:
+            self.logger.debug("Message ID not found in the current URL")
+            return False
+
+    def send_msg_to_id(self,msg_id,msg):
+        if msg_id not in self.driver.current_url:
+            self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
+
+        msg_field = self.__wait(LOCATORS["dm_msg_field"])
+
+        action = ActionChains(self.driver)
+        action.move_to_element(msg_field)
+        action.click()
+        action.send_keys(msg+"\n")
+        action.perform()  
+        
+
+        #dm_id = self.__get_id_from_url(self.driver.current_url)
+        return "sent" 
 
     def send_msg(self, to_username, msg, check_dm_message=False):
         self.__make_sure_its_logged()
@@ -461,9 +493,74 @@ class User:
                 self.logger.warn("acc freezed")
                 return "freeze"
 
-            # If the action is successful, break the loop
+            
+            dm_id = self.__get_id_from_url(self.driver.current_url)
+            self.logger.info(dm_id)
+
             return "sent"
 
         except:
             self.logger.exception("send_msg()")
             return "error"
+
+    def go_to_url(self,url):
+        self.driver.get(url)
+
+    def _move_primary_general(self):
+        self.__wait_and_click('//*[@aria-label="Conversation information"]',2)
+
+        self.__wait_and_click('//div[@role="button" and text()="Move"]',5)
+        sleep(1)
+
+    def _get_current_messages(self,i=0):
+        i+= 1
+        if i == 5:
+            raise BrokenChatException()
+        
+        def get_list(list_of_msg_webelements) -> list:
+            msg = []
+            for webelement in list_of_msg_webelements:
+                msg.append(webelement.text)
+            return msg
+        try:
+            assistant = self.__wait_for_all("//div[contains(@style,'background-color: rgb(55, 151, 240)')]",5)
+        except:
+            self.driver.refresh()
+            return self._get_current_messages(i)
+        
+
+        assistant_msg = get_list(assistant)
+        try:
+            user = self.__wait_for_all("//div[contains(@style,'background-color: rgb(var(--ig-highlight-background))')]",5)
+            user_msg = get_list(user)
+        except:
+            user_msg = []
+
+        all = self.__wait_for_all('//div[@aria-label="Double tap to like"]',5)
+        all_msg = get_list(all)
+
+        self.logger.info(f'found {len(all_msg)} messages')
+        self.logger.debug(f"{self.__get_id_from_url(self.driver.current_url),all_msg, user_msg, assistant_msg}")
+
+        return self.__get_id_from_url(self.driver.current_url),all_msg, user_msg, assistant_msg
+
+    def get_new_context(self,first=True):
+        self.__make_sure_its_logged()
+
+        if not "https://www.instagram.com/direct/" in self.driver.current_url:
+            self.driver.get("https://www.instagram.com/direct/")
+        sleep(1)
+
+        try:
+            new_msgs = self.__wait_for_all('//span[@data-visualcompletion="ignore"]/parent::div/parent::div/parent::div/parent::div')
+        except:
+            return "no new messages"
+        
+        #self.logger.info(new_msgs)
+        
+        new_msgs[0 if first else -1].location_once_scrolled_into_view
+        new_msgs[0 if first else -1].click()
+        sleep(3)
+
+        return self._get_current_messages()
+        
