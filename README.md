@@ -9,12 +9,11 @@ Its written using Selenium library in Python and its utilizing undetected-chrome
 To use this script, you need to have the following Python packages installed:
 
     selenium
-    undetected-chromedriver
-    requests
+    pyotp
 
 You can install them using the following command:
 
-    pip3 install selenium undetected-chromedriver requests
+    pip3 install selenium pyotp
 
 ## Basic usage
 
