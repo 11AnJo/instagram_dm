@@ -6,12 +6,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 from time import sleep
 import time
-import logging
-import sys
-import os
+import os, sys
 from selenium.common.exceptions import StaleElementReferenceException
 import pyotp
 import re
+import logging
 
 LOCATORS = {
     "cookie_accept": "//button[text()='Decline optional cookies']",
@@ -58,7 +57,7 @@ class User:
         self.is_logged = False
 
         self.debug = debug
-        self.logger = self.__initialize_log()
+        self.logger = self.__initialize_log(f"IG_{profile_name}",self.debug)
 
         self.driver = None
 
@@ -88,8 +87,7 @@ class User:
         logger.addHandler(file_handler)
         if newly_created:
             logger.debug("log folder was not found. Created new one")
-        return logger
-
+        return logger 
     def __make_sure_its_logged(self):
         if self.driver == None:
             self.logger.info("driver not active")
@@ -107,6 +105,7 @@ class User:
             options.add_argument(f"--user-data-dir={data_dir}")
         # options.add_argument(r'--profile-directory=YourProfileDir') #e.g. Profile 3
         options.add_argument("--lang=en_US")
+        options.add_experimental_option('excludeSwitches', ['enable-logging'])
         self.driver = uc.Chrome(options=options)
 
         return self.driver
@@ -307,6 +306,9 @@ class User:
         url = self.driver.current_url
         self.logger.debug("looking for 2f")
         try:
+            a = self.__wait(LOCATORS['2f_screen_present'])
+            a.send_keys(Keys.CONTROL, 'a')
+            a.send_keys(Keys.BACKSPACE)
             self.__paste_text(LOCATORS['2f_screen_present'], self.__generate_2factor_code(
                 self.token), time_to_wait=10)
 
