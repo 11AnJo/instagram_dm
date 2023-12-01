@@ -6,11 +6,54 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 from time import sleep
 import time
-import os, sys
+import os
 from selenium.common.exceptions import StaleElementReferenceException
 import pyotp
 import re
 import logging
+import os
+from logging.handlers import RotatingFileHandler
+
+def initialize_log(name_of_log, debug=False):
+    """
+    Initialize a logger with two file handlers: one for normal logs and one for debug logs.
+    The debug log file is limited to 1MB in size.
+    """
+
+    # Create the log directory if it doesn't exist
+    log_dir = f'./app/log/{name_of_log}'
+    if not os.path.isdir(log_dir):
+        os.makedirs(log_dir)
+
+
+    # Initialize the logger
+    logger = logging.getLogger(name_of_log)
+    logger.setLevel(logging.DEBUG)
+
+    # Create a formatter
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # Create file handler for normal logging
+    normal_log_file = os.path.join(log_dir, f"{name_of_log}.log")
+    file_handler = logging.FileHandler(normal_log_file)
+    file_handler.setLevel(logging.DEBUG if debug else logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    # Create file handler for debug logging with rotation
+    debug_log_file = os.path.join(log_dir, f"{name_of_log}-debug.log")
+    debug_file_handler = RotatingFileHandler(debug_log_file, maxBytes=1*1024*1024, backupCount=5)
+    debug_file_handler.setLevel(logging.DEBUG)
+    debug_file_handler.setFormatter(formatter)
+    logger.addHandler(debug_file_handler)
+
+    # Stream handler to output to console
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.DEBUG if debug else logging.INFO)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+
+    return logger
 
 LOCATORS = {
     "cookie_accept": "//button[text()='Decline optional cookies']",
@@ -23,7 +66,6 @@ LOCATORS = {
     "dm_user_not_found": "//span[text()='No account found.']",
     "dm_start_chat_btn": "//div/div[text()='Chat' and @role='button']",
     "dm_msg_field": "//div[@role='textbox' and @aria-label='Message']",
-    "dm_notification_present": "//span[text()='Turn on Notifications']",
     "dm_notification_disable": "//button[text()='Not Now']",
     "dm_send_button": "//div[@role='button' and text()='Send']",
     "dm_error_present": "//*[text()='IGD message send error icon']",
@@ -31,7 +73,8 @@ LOCATORS = {
     "2f_entering_error": "//p[@id='twoFactorErrorAlert' and @role='alert']",
     "check_dm_message_sent_to_user": "//div[@role='none']//div[@dir='auto' and @role='none']",
     "login_error": "//p[@id='slfErrorAlert']",
-    "save_login_info": "//button[text()='Save Info']"
+    "sus_attempt":"//p[text()='Suspicious Login Attempt']",
+    "save_login_info": "//button[text()='Save info']"
 }
 
 
@@ -57,37 +100,11 @@ class User:
         self.is_logged = False
 
         self.debug = debug
-        self.logger = self.__initialize_log(f"IG_{profile_name}",self.debug)
+        self.logger = initialize_log(f"IG_{profile_name}_{username}",self.debug)
 
         self.driver = None
 
-    def __initialize_log(self):
-        logger = logging.getLogger(
-            f"instagram_web - {self.profile_name if self.profile_name else self.username}")
-        if self.debug:
-            logger.setLevel(logging.DEBUG)
-        else:
-            logger.setLevel(logging.INFO)
-        stream_handler = logging.StreamHandler(sys.stdout)
-        stream_handler.setLevel(logging.DEBUG)
-        newly_created = False
-        if os.path.isdir('./log'):
-            pass
-        else:
-            newly_created = True
-            os.makedirs('./log')
-        file_handler = logging.FileHandler(
-            f'log/{self.profile_name if self.profile_name else self.username}.log', encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        stream_handler.setFormatter(formatter)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(stream_handler)
-        logger.addHandler(file_handler)
-        if newly_created:
-            logger.debug("log folder was not found. Created new one")
-        return logger 
+    
     def __make_sure_its_logged(self):
         if self.driver == None:
             self.logger.info("driver not active")
@@ -103,8 +120,9 @@ class User:
             data_dir = f"{os.getcwd()}/profiles/{self.profile_name}"
             # e.g. C:\Users\You\AppData\Local\Google\Chrome\User Data
             options.add_argument(f"--user-data-dir={data_dir}")
-        # options.add_argument(r'--profile-directory=YourProfileDir') #e.g. Profile 3
+        #options.add_argument(r'--profile-directory=YourProfileDir') #e.g. Profile 3
         options.add_argument("--lang=en_US")
+        options.add_argument('--headless=new')
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
         self.driver = uc.Chrome(options=options)
 
@@ -306,7 +324,7 @@ class User:
         url = self.driver.current_url
         self.logger.debug("looking for 2f")
         try:
-            a = self.__wait(LOCATORS['2f_screen_present'])
+            a = self.__wait(LOCATORS['2f_screen_present'],10)
             a.send_keys(Keys.CONTROL, 'a')
             a.send_keys(Keys.BACKSPACE)
             self.__paste_text(LOCATORS['2f_screen_present'], self.__generate_2factor_code(
@@ -346,16 +364,26 @@ class User:
             while True:
                 sleep(0.5)
                 if "instagram.com/accounts/onetap" in self.driver.current_url:
-                    self.__wait_and_click(LOCATORS["save_login_info"])
+                    try:
+                        self.__wait_and_click(LOCATORS["save_login_info"],20)
+                    except WaitAndClickException:
+                        if self.__is_element_present(LOCATORS['sus_attempt']):
+                            self.logger.warning("suspicious login attempt")
+                            input("suspicious login attempt")
 
-                    self.driver.get("https://www.instagram.com/direct/inbox")
+                    sleep(5)
+
 
                     try:
-                        self.__wait_and_click(
-                            LOCATORS["dm_notification_disable"], 3)
+                        self.__wait_and_click(LOCATORS["dm_notification_disable"], 3)
                     except WaitAndClickException:
                         self.logger.info("No dm notification")
-                    self.logger.info(f"Login succesfull to")
+
+                    #self.driver.get("https://www.instagram.com/direct/inbox")
+                    sleep(1)
+
+
+                    self.logger.info(f"Login succesfull to {self.username}")
                     self.is_logged = True
                     return True
 
@@ -381,15 +409,22 @@ class User:
                 self.logger.debug("two factor is on, trying to login")
                 self.__two_factor()
 
-            self.__wait_and_click(LOCATORS["save_login_info"],10)
-            sleep(2)
+            try:
+                self.__wait_and_click(LOCATORS["save_login_info"],20)
+            except WaitAndClickException:
+                if self.__is_element_present(LOCATORS['sus_attempt']):
+                    self.logger.warning("suspicious login attempt")
+                    return "suspicious login attempt"
 
-            self.driver.get("https://www.instagram.com/direct/inbox")
+            sleep(5)
 
             try:
                 self.__wait_and_click(LOCATORS["dm_notification_disable"], 3)
             except WaitAndClickException:
                 self.logger.info("No dm notification")
+
+            #self.driver.get("https://www.instagram.com/direct/inbox")
+            sleep(1)
             self.logger.info(f"Login succesfull to")
             self.is_logged = True
             return True
@@ -408,11 +443,17 @@ class User:
             self.logger.debug("Message ID not found in the current URL")
             return False
 
-    def send_msg_to_id(self,msg_id,msg):
-        if msg_id not in self.driver.current_url:
-            self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
+    def send_msg_to_msg_id(self,msg_id,msg,check_dm_message=False):
+        self.__make_sure_its_logged()
+        
+        
+        self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
+        msg_field = self.__wait(LOCATORS["dm_msg_field"],10)
 
-        msg_field = self.__wait(LOCATORS["dm_msg_field"])
+        if check_dm_message:
+            if self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 2):
+                return 'already sent'
+
 
         action = ActionChains(self.driver)
         action.move_to_element(msg_field)
@@ -420,6 +461,10 @@ class User:
         action.send_keys(msg+"\n")
         action.perform()  
         
+
+        if self.__is_element_present(LOCATORS["dm_error_present"], 3) == True:
+            self.logger.warn("acc freezed")
+            return "freeze"
 
         #dm_id = self.__get_id_from_url(self.driver.current_url)
         return "sent" 
