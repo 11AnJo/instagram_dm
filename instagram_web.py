@@ -69,6 +69,7 @@ LOCATORS = {
     "dm_notification_disable": "//button[text()='Not Now']",
     "dm_send_button": "//div[@role='button' and text()='Send']",
     "dm_error_present": "//*[text()='IGD message send error icon']",
+    "dm_not_everyone":"//div//div//span[@dir='auto' and contains(text(),'Not everyone can message this account.')]",
     "2f_screen_present": "//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
     "2f_entering_error": "//p[@id='twoFactorErrorAlert' and @role='alert']",
     "check_dm_message_sent_to_user": "//div[@role='none']//div[@dir='auto' and @role='none']",
@@ -122,7 +123,7 @@ class User:
             options.add_argument(f"--user-data-dir={data_dir}")
         #options.add_argument(r'--profile-directory=YourProfileDir') #e.g. Profile 3
         options.add_argument("--lang=en_US")
-        options.add_argument('--headless=new')
+        #options.add_argument('--headless=new')
         options.add_experimental_option('excludeSwitches', ['enable-logging'])
         self.driver = uc.Chrome(options=options)
 
@@ -454,17 +455,25 @@ class User:
             if self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 2):
                 return 'already sent'
 
+        if self.__is_element_present(LOCATORS["dm_not_everyone"]):
+            return "not everyone"
 
-        action = ActionChains(self.driver)
-        action.move_to_element(msg_field)
-        action.click()
-        action.send_keys(msg+"\n")
-        action.perform()  
+        try:
+            action = ActionChains(self.driver)
+            action.move_to_element(msg_field)
+            action.click()
+            action.send_keys(msg+"\n")
+            action.perform()
+        except StaleElementReferenceException:
+            if self.__is_element_present(LOCATORS["dm_not_everyone"]):
+                return "not everyone"
+            self.logger.exception("StaleElementReferenceException")
         
 
         if self.__is_element_present(LOCATORS["dm_error_present"], 3) == True:
             self.logger.warn("acc freezed")
             return "freeze"
+        
 
         #dm_id = self.__get_id_from_url(self.driver.current_url)
         return "sent" 
@@ -527,18 +536,27 @@ class User:
                 if check_dm_message_sent_to_user():
                     return 'already sent'
 
-            action = ActionChains(self.driver)
-            action.move_to_element(msg_field)
-            action.click()
-            action.send_keys(msg+"\n")
-            action.perform()
-            # send_btn = self.driver.find_element("xpath",LOCATORS["dm_send_button"])
-            # send_btn.click()
-            # msg_field.send_keys(Keys.ENTER)
+            if self.__is_element_present(LOCATORS["dm_not_everyone"]):
+                return "not everyone"
+
+            try:
+                action = ActionChains(self.driver)
+                action.move_to_element(msg_field)
+                action.click()
+                action.send_keys(msg+"\n")
+                action.perform()
+            except StaleElementReferenceException:
+                if self.__is_element_present(LOCATORS["dm_not_everyone"]):
+                    return "not everyone"
+                self.logger.exception("StaleElementReferenceException")
+        
+
 
             if check_if_freezed() == True:
                 self.logger.warn("acc freezed")
                 return "freeze"
+            
+            
 
             
             dm_id = self.__get_id_from_url(self.driver.current_url)
