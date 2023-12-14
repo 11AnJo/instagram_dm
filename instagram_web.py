@@ -69,6 +69,7 @@ LOCATORS = {
     "dm_notification_disable": "//button[text()='Not Now']",
     "dm_send_button": "//div[@role='button' and text()='Send']",
     "dm_error_present": "//*[text()='IGD message send error icon']",
+    "dm_account_instagram_user":"//span[normalize-space(.)='Instagram User' and contains(@style, 'line-height: var(--base-line-clamp-line-height);')]",
     "dm_not_everyone":"//div//div//span[@dir='auto' and contains(text(),'Not everyone can message this account.')]",
     "2f_screen_present": "//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
     "2f_entering_error": "//p[@id='twoFactorErrorAlert' and @role='alert']",
@@ -90,6 +91,21 @@ class WaitException(Exception):
 class BrokenChatException(Exception):
     pass
 
+
+def ensure_logged(func):
+    def wrapper(self, *args, **kwargs):
+        if self.driver is None:
+            self.logger.info("driver not active")
+            self.driver = self._init_driver()
+
+        if not self.is_logged:
+            self.logger.info("login not active")
+            self.login()
+
+        return func(self, *args, **kwargs)
+    return wrapper
+
+
 class User:
     def __init__(self, profile_name=None, username=None, password=None, token=None, debug=False, starting_page='https://www.instagram.com/direct/'):
         self.cookies_dict = None
@@ -106,16 +122,7 @@ class User:
         self.driver = None
 
     
-    def __make_sure_its_logged(self):
-        if self.driver == None:
-            self.logger.info("driver not active")
-            self.driver = self.__init_driver()
-
-        if not self.is_logged:
-            self.logger.info("login not active")
-            self.login()
-
-    def __init_driver(self):
+    def _init_driver(self):
         options = uc.ChromeOptions()
         if self.profile_name:
             data_dir = f"{os.getcwd()}/profiles/{self.profile_name}"
@@ -191,9 +198,8 @@ class User:
         action.send_keys(text)
         action.perform()
 
+    @ensure_logged
     def get_suggestions(self, username):
-        self.__make_sure_its_logged()
-
         def get_all_usernames():
             usernames = set()
             repeated_count = 0
@@ -275,8 +281,8 @@ class User:
         self.driver = None
         self.is_logged = False
 
+    @ensure_logged
     def get_cookies(self, close_after=True):
-        self.__make_sure_its_logged()
 
         def transform_cookies(cookies):
             headers = {}
@@ -350,7 +356,7 @@ class User:
 
     def login(self):
         if self.driver == None:
-            self.driver = self.__init_driver()
+            self.driver = self._init_driver()
 
         self.driver.get('https://www.instagram.com/direct/')
         if self.driver.current_url == 'https://www.instagram.com/direct/':
@@ -444,49 +450,37 @@ class User:
             self.logger.debug("Message ID not found in the current URL")
             return False
 
-    def send_msg_to_msg_id(self,msg_id,msg,check_dm_message=False):
-        self.__make_sure_its_logged()
-        
-        
+    @ensure_logged
+    def send_msg_to_msg_id(self,msg_id,msg,check_dm_message=False):     
         self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
-        msg_field = self.__wait(LOCATORS["dm_msg_field"],10)
-
-        if check_dm_message:
-            if self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 2):
-                return 'already sent'
-
-        if self.__is_element_present(LOCATORS["dm_not_everyone"]):
-            return "not everyone"
-
         try:
-            action = ActionChains(self.driver)
-            action.move_to_element(msg_field)
-            action.click()
-            action.send_keys(msg+"\n")
-            action.perform()
-        except StaleElementReferenceException:
-            if self.__is_element_present(LOCATORS["dm_not_everyone"]):
-                return "not everyone"
-            self.logger.exception("StaleElementReferenceException")
-        
+            msg_field = self.__wait(LOCATORS["dm_msg_field"],10)
+        except WaitException:
+            self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
+            try:
+                msg_field = self.__wait(LOCATORS["dm_msg_field"],10)
+            except WaitException:
+                return 'skip'
 
-        if self.__is_element_present(LOCATORS["dm_error_present"], 3) == True:
-            self.logger.warn("acc freezed")
-            return "freeze"
-        
+        err = self.__check_prev_mess(check_dm_message)
+        if err:
+            return err
+            
+        err = self.__paste_msg_in_dm(msg,msg_field)
+        if err:
+            return err 
 
-        #dm_id = self.__get_id_from_url(self.driver.current_url)
+        err = self.__check_if_freezed()
+        if err:
+            return err
+        
+        if self.__is_element_present(LOCATORS['dm_account_instagram_user']):
+            return 'msg_id acc not found'
+        
         return "sent" 
 
+    @ensure_logged
     def send_msg(self, to_username, msg, check_dm_message=False):
-        self.__make_sure_its_logged()
-
-        def check_dm_message_sent_to_user():
-            return self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 2)
-
-        def check_if_freezed():
-            return self.__is_element_present(LOCATORS["dm_error_present"], 3)
-
         try:
             self.logger.debug(
                 f"send_msg() called with parameters to_username: {to_username}, msg: {msg}")
@@ -532,41 +526,52 @@ class User:
 
             msg_field = self.__wait(LOCATORS["dm_msg_field"])
 
-            if check_dm_message:
-                if check_dm_message_sent_to_user():
-                    return 'already sent'
+            err = self.__check_prev_mess(check_dm_message)
+            if err:
+                return err
 
-            if self.__is_element_present(LOCATORS["dm_not_everyone"]):
-                return "not everyone"
-
-            try:
-                action = ActionChains(self.driver)
-                action.move_to_element(msg_field)
-                action.click()
-                action.send_keys(msg+"\n")
-                action.perform()
-            except StaleElementReferenceException:
-                if self.__is_element_present(LOCATORS["dm_not_everyone"]):
-                    return "not everyone"
-                self.logger.exception("StaleElementReferenceException")
+            err = self.__paste_msg_in_dm(msg,msg_field)
+            if err:
+                return err 
         
 
-
-            if check_if_freezed() == True:
-                self.logger.warn("acc freezed")
-                return "freeze"
-            
-            
-
-            
-            dm_id = self.__get_id_from_url(self.driver.current_url)
-            self.logger.info(dm_id)
+            err = self.__check_if_freezed()
+            if err:
+                return err
 
             return "sent"
 
         except:
             self.logger.exception("send_msg()")
             return "error"
+
+    def __paste_msg_in_dm(self,msg,msg_field):
+        if self.__is_element_present(LOCATORS["dm_not_everyone"]):
+            return "not everyone"
+
+        try:
+            action = ActionChains(self.driver)
+            action.move_to_element(msg_field)
+            action.click()
+            action.send_keys(msg+"\n")
+            action.perform()
+        except StaleElementReferenceException:
+            if self.__is_element_present(LOCATORS["dm_not_everyone"]):
+                return "not everyone"
+            self.logger.exception("StaleElementReferenceException")
+        
+        if self.__is_element_present(LOCATORS["dm_not_everyone"]):
+            return "not everyone"
+        
+    def __check_if_freezed(self):
+        if self.__is_element_present(LOCATORS["dm_error_present"], 3):
+            self.logger.warn(f"acc: {self.username} freezed")
+            return "freeze"
+        
+    def __check_prev_mess(self,check_dm_message):
+        if check_dm_message:
+            if self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 2):
+                return 'already sent'
 
     def go_to_url(self,url):
         self.driver.get(url)
@@ -609,8 +614,8 @@ class User:
 
         return self.__get_id_from_url(self.driver.current_url),all_msg, user_msg, assistant_msg
 
+    @ensure_logged
     def get_new_context(self,first=True):
-        self.__make_sure_its_logged()
 
         if not "https://www.instagram.com/direct/" in self.driver.current_url:
             self.driver.get("https://www.instagram.com/direct/")
@@ -629,3 +634,4 @@ class User:
 
         return self._get_current_messages()
         
+ 
