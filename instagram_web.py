@@ -474,9 +474,6 @@ class User:
         if err:
             return err
         
-        if self.__is_element_present(LOCATORS['dm_account_instagram_user']):
-            return 'msg_id acc not found'
-        
         return "sent" 
 
     @ensure_logged
@@ -553,6 +550,7 @@ class User:
             action = ActionChains(self.driver)
             action.move_to_element(msg_field)
             action.click()
+            action.pause(1)
             action.send_keys(msg+"\n")
             action.perform()
         except StaleElementReferenceException:
@@ -565,6 +563,9 @@ class User:
         
     def __check_if_freezed(self):
         if self.__is_element_present(LOCATORS["dm_error_present"], 3):
+            if self.__is_element_present(LOCATORS['dm_account_instagram_user']):
+                return 'msg_id acc not found'
+
             self.logger.warn(f"acc: {self.username} freezed")
             return "freeze"
         
