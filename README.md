@@ -2,7 +2,6 @@
 
 This script provides a way to automate certain actiivties on Instagram i.e. sending direct messages.
 Support for chrome profiles - automatic logging in and manual logging in.
-Its written using Selenium library in Python and its utilizing undetected-chromedriver (also works good with normal chromedriver). 
 
 ## Dependencies
 
