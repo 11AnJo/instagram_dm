@@ -1,4 +1,7 @@
-from selenium import webdriver as uc
+#from selenium import webdriver as uc
+from undetected_chromedriver import Chrome as uc
+from selenium.webdriver.chrome.options import Options
+
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -8,6 +11,7 @@ from time import sleep
 import time
 import os
 from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import TimeoutException
 import pyotp
 import re
 import logging
@@ -56,7 +60,11 @@ def initialize_log(name_of_log, debug=False):
     return logger
 
 LOCATORS = {
+    "cookie_pre_login_accept": "//button[text()='Decline optional cookies']",
+    "cookie_post_login_accept": "//div//span[text()='Decline optional cookies']",
+
     "cookie_accept": "//button[text()='Decline optional cookies']",
+
     "cookie_text": "//*[text()='Allow the use of cookies from Instagram on this browser?']",
     "login_username_field": "//input[@name='username']",
     "login_password_field": "//input[@name='password']",
@@ -116,6 +124,8 @@ class User:
         self.starting_page = starting_page
         self.is_logged = False
 
+        self.dm_notification_disabled = False
+
         self.debug = debug
         self.logger = initialize_log(f"IG_{profile_name}_{username}",self.debug)
 
@@ -123,7 +133,9 @@ class User:
 
     
     def _init_driver(self):
-        options = uc.ChromeOptions()
+        #options = uc.ChromeOptions()
+        options = Options()
+
         if self.profile_name:
             data_dir = f"{os.getcwd()}/profiles/{self.profile_name}"
             # e.g. C:\Users\You\AppData\Local\Google\Chrome\User Data
@@ -131,8 +143,8 @@ class User:
         #options.add_argument(r'--profile-directory=YourProfileDir') #e.g. Profile 3
         options.add_argument("--lang=en_US")
         #options.add_argument('--headless=new')
-        options.add_experimental_option('excludeSwitches', ['enable-logging'])
-        self.driver = uc.Chrome(options=options)
+        #options.add_experimental_option('excludeSwitches', ['enable-logging']) not working in undetected crhome
+        self.driver = uc(options=options)
 
         return self.driver
 
@@ -197,6 +209,38 @@ class User:
         action.click()
         action.send_keys(text)
         action.perform()
+
+    def __wait_for_first_element_or_url(self, elements, timeout=5):
+        """
+        Check the current URL or wait for the first element from the list of xpaths to be present.
+
+        :param elements: List of URLs or XPath locators.
+        :param timeout: Maximum time to wait for the elements or URLs.
+        :return: Index of the first element or URL that appears, or -1 if none appear.
+        """
+        self.logger.debug(f'wait_for_first_element_or_url() - called with elements: {elements}, timeout: {timeout}')
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            for index, element in enumerate(elements):
+                try:
+                    if element.startswith('http'):
+                        if element in self.driver.current_url:
+                            self.logger.debug(f"current URL matches with index: {index}")
+                            return index
+                        time.sleep(0.05)
+                    else:
+                        WebDriverWait(self.driver, timeout=0.05).until(EC.presence_of_element_located((By.XPATH, element)))
+                        self.logger.debug(f"found element with index: {index}")
+                        return index
+                except TimeoutException:
+                    pass  # Ignore timeout and check the next element or URL
+                except Exception as e:
+                    self.logger.debug(f"Error while waiting for the element or URL: {element}. Error: {str(e)}")
+
+        self.logger.debug("No element or URL found/loaded within the timeout period.")
+        return False
+
 
     @ensure_logged
     def get_suggestions(self, username):
@@ -280,6 +324,7 @@ class User:
             self.driver.quit()
         self.driver = None
         self.is_logged = False
+        self.dm_notification_disabled = False
 
     @ensure_logged
     def get_cookies(self, close_after=True):
@@ -320,12 +365,27 @@ class User:
         new_code = totp.now()
         return new_code+"\n"
 
-    def __accept_cookie(self):
-        self.logger.debug(f"__accept_cookie() called")
+    def __accept_pre_login_cookie(self):
+        self.logger.debug(f"__accept_pre_login_cookie() called")
         try:
-            self.__wait_and_click(LOCATORS["cookie_accept"], 2)
+            self.__wait_and_click(LOCATORS["cookie_pre_login_accept"], 2)
+            self.logger.debug("Pre login cookie accepted")
+            time.sleep(1)
+            return True
         except WaitAndClickException:
-            self.logger.info("No cookies to accept")
+            self.logger.debug("No pre login cookies to accept")
+            return False
+
+    def __accept_post_login_cookie(self,time_to_wait=2):
+        self.logger.debug(f"__accept_post_login_cookie() called")
+        try:
+            self.__wait_and_click(LOCATORS["cookie_post_login_accept"], time_to_wait)
+            self.logger.debug("Post login cookie accepted")
+            time.sleep(2)
+            return True
+        except WaitAndClickException:
+            self.logger.debug("No post login cookies to accept")
+            return False
 
     def __two_factor(self):
         url = self.driver.current_url
@@ -354,6 +414,7 @@ class User:
         self.logger.error("after entering code no change in url")
         return "cannot login"
 
+
     def login(self):
         if self.driver == None:
             self.driver = self._init_driver()
@@ -363,49 +424,19 @@ class User:
             self.is_logged = True
             return True
 
-        if self.username == None and self.password == None:
-            self.driver.get('https://instagram.com/accounts/login')
-
+        if self.username == None or self.password == None:
             self.logger.info(
-                "Username and password not specified. Please login by yourself")
-            while True:
-                sleep(0.5)
-                if "instagram.com/accounts/onetap" in self.driver.current_url:
-                    try:
-                        self.__wait_and_click(LOCATORS["save_login_info"],20)
-                    except WaitAndClickException:
-                        if self.__is_element_present(LOCATORS['sus_attempt']):
-                            self.logger.warning("suspicious login attempt")
-                            input("suspicious login attempt")
-
-                    sleep(5)
-
-
-                    try:
-                        self.__wait_and_click(LOCATORS["dm_notification_disable"], 3)
-                    except WaitAndClickException:
-                        self.logger.info("No dm notification")
-
-                    #self.driver.get("https://www.instagram.com/direct/inbox")
-                    sleep(1)
-
-
-                    self.logger.info(f"Login succesfull to {self.username}")
-                    self.is_logged = True
-                    return True
+                "Cannot login - username or password not specified.")
+            return False
 
         try:
             self.driver.get('https://instagram.com/accounts/login')
 
-            self.__accept_cookie()
-            self.__wait(LOCATORS["login_username_field"],
-                        1).send_keys(self.username)
-            a = self.__wait(LOCATORS["login_password_field"], 1)
-            a.send_keys(self.password)
-            a.send_keys(Keys.ENTER)
-
-            # self.__paste_text(LOCATORS["login_username_field"],self.username,1)
-            # self.__paste_text(LOCATORS["login_password_field"],self.password)
+            self.__accept_pre_login_cookie()
+            time.sleep(3)
+            self.__paste_text(LOCATORS["login_username_field"],self.username,1)
+            time.sleep(3)
+            self.__paste_text(LOCATORS["login_password_field"],self.password+'\n',1)
 
             if self.__is_element_present(LOCATORS['login_error'], 2):
                 self.logger.error(
@@ -416,22 +447,36 @@ class User:
                 self.logger.debug("two factor is on, trying to login")
                 self.__two_factor()
 
+                
             try:
-                self.__wait_and_click(LOCATORS["save_login_info"],20)
+                self.__accept_post_login_cookie()
+                self.__wait(LOCATORS["save_login_info"],15)
+                time.sleep(2)
+
+                self.__wait_and_click(LOCATORS["save_login_info"],1)
+                while True:
+                    if "https://www.instagram.com/accounts/onetap" in self.driver.current_url:
+                        time.sleep(1)
+                        continue
+                    time.sleep(2)
+                    break
             except WaitAndClickException:
                 if self.__is_element_present(LOCATORS['sus_attempt']):
                     self.logger.warning("suspicious login attempt")
                     return "suspicious login attempt"
 
-            sleep(5)
+        
+            if self.__accept_post_login_cookie(0):
+                self.logger.warning("post cookie not accepted first time, please adjust the sleep time")
 
             try:
-                self.__wait_and_click(LOCATORS["dm_notification_disable"], 3)
+                self.__wait_and_click(LOCATORS["dm_notification_disable"], 10)
+                self.dm_notification_disabled = True
             except WaitAndClickException:
                 self.logger.info("No dm notification")
 
             #self.driver.get("https://www.instagram.com/direct/inbox")
-            sleep(1)
+            sleep(10)
             self.logger.info(f"Login succesfull to")
             self.is_logged = True
             return True
@@ -462,6 +507,9 @@ class User:
             except WaitException:
                 return 'skip'
 
+        if self.dm_notification_disabled == False:
+            self.__check_dm_notification()
+
         err = self.__check_prev_mess(check_dm_message)
         if err:
             return err
@@ -484,6 +532,9 @@ class User:
 
             if not self.__is_element_present(LOCATORS["new_dm_btn"], 0):
                 self.driver.get("https://www.instagram.com/direct/")
+
+            if self.dm_notification_disabled == False:
+                self.__check_dm_notification()
 
             try:
                 self.__wait_and_click(LOCATORS["new_dm_btn"])
@@ -542,6 +593,11 @@ class User:
             self.logger.exception("send_msg()")
             return "error"
 
+    def __check_dm_notification(self):
+        if self.__is_element_present(LOCATORS["dm_notification_disable"], 4):
+            self.__wait_and_click(LOCATORS["dm_notification_disable"], 2)
+            self.dm_notification_disabled = True
+
     def __paste_msg_in_dm(self,msg,msg_field):
         if self.__is_element_present(LOCATORS["dm_not_everyone"]):
             return "not everyone"
@@ -574,6 +630,7 @@ class User:
             if self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 2):
                 return 'already sent'
 
+    @ensure_logged
     def go_to_url(self,url):
         self.driver.get(url)
 
@@ -621,6 +678,9 @@ class User:
         if not "https://www.instagram.com/direct/" in self.driver.current_url:
             self.driver.get("https://www.instagram.com/direct/")
         sleep(1)
+        
+        if self.dm_notification_disabled == False:
+            self.__check_dm_notification()
 
         try:
             new_msgs = self.__wait_for_all('//span[@data-visualcompletion="ignore"]/parent::div/parent::div/parent::div/parent::div')
