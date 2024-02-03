@@ -43,7 +43,10 @@ Send a direct message to another user:
 ```py
 user.send_msg(to_username="recipient_username", msg="Your message here")
 ````
-
+Send a direct message to another user knowing his msg_id:
+```py
+user.send_msg_to_msg_id(msg_id="recipient_msg_id", msg="Your message here")
+````
 
 
 Get session cookies (may use for a requesting directly from instagram api)
