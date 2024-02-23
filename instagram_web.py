@@ -76,7 +76,7 @@ LOCATORS = {
     "dm_msg_field": "//div[@role='textbox' and @aria-label='Message']",
     "dm_notification_disable": "//button[text()='Not Now']",
     "dm_send_button": "//div[@role='button' and text()='Send']",
-    "dm_error_present": "//*[text()='IGD message send error icon']",
+    "dm_error_present": "//*[@aria-label='Failed to send']",
     "dm_account_instagram_user":"//span[normalize-space(.)='Instagram User' and contains(@style, 'line-height: var(--base-line-clamp-line-height);')]",
     "dm_not_everyone":"//div//div//span[@dir='auto' and contains(text(),'Not everyone can message this account.')]",
     "2f_screen_present": "//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
@@ -133,18 +133,21 @@ class User:
 
     
     def _init_driver(self):
-        #options = uc.ChromeOptions()
         options = Options()
-
         if self.profile_name:
             data_dir = f"{os.getcwd()}/profiles/{self.profile_name}"
-            # e.g. C:\Users\You\AppData\Local\Google\Chrome\User Data
             options.add_argument(f"--user-data-dir={data_dir}")
-        #options.add_argument(r'--profile-directory=YourProfileDir') #e.g. Profile 3
         options.add_argument("--lang=en_US")
+        options.add_argument("--mute-audio")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument('--disable-infobars')
+        options.add_argument("--disable-default-apps")
+        options.add_argument("--disable-notifications")
         #options.add_argument('--headless=new')
         #options.add_experimental_option('excludeSwitches', ['enable-logging']) not working in undetected crhome
-        self.driver = uc(options=options)
+        self.driver = uc(options=options, browser_executable_path="C:\\Users\\test\\Desktop\\chromedriver\\chrome.exe")
 
         return self.driver
 
@@ -425,9 +428,36 @@ class User:
             return True
 
         if self.username == None or self.password == None:
+            self.driver.get('https://instagram.com/accounts/login')
+
             self.logger.info(
-                "Cannot login - username or password not specified.")
-            return False
+                "Username and password not specified. Please login by yourself")
+            while True:
+                sleep(0.5)
+                if "instagram.com/accounts/onetap" in self.driver.current_url:
+                    try:
+                        self.__wait_and_click(LOCATORS["save_login_info"],20)
+                    except WaitAndClickException:
+                        if self.__is_element_present(LOCATORS['sus_attempt']):
+                            self.logger.warning("suspicious login attempt")
+                            input("suspicious login attempt")
+
+                    sleep(5)
+
+
+                    try:
+                        self.__wait_and_click(LOCATORS["dm_notification_disable"], 3)
+                        self.dm_notification_disabled = True
+                    except WaitAndClickException:
+                        self.logger.info("No dm notification")
+
+                    #self.driver.get("https://www.instagram.com/direct/inbox")
+                    sleep(1)
+
+
+                    self.logger.info(f"Login succesfull to {self.username}")
+                    self.is_logged = True
+                    return True
 
         try:
             self.driver.get('https://instagram.com/accounts/login')
@@ -437,6 +467,10 @@ class User:
             self.__paste_text(LOCATORS["login_username_field"],self.username,1)
             time.sleep(3)
             self.__paste_text(LOCATORS["login_password_field"],self.password+'\n',1)
+
+
+            # self.__paste_text(LOCATORS["login_username_field"],self.username,1)
+            # self.__paste_text(LOCATORS["login_password_field"],self.password)
 
             if self.__is_element_present(LOCATORS['login_error'], 2):
                 self.logger.error(
