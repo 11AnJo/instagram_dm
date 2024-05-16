@@ -1,7 +1,6 @@
 #from selenium import webdriver as uc
 from undetected_chromedriver import Chrome as uc
 from selenium.webdriver.chrome.options import Options
-
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -17,6 +16,7 @@ import re
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+from urllib.parse import urlparse
 
 def initialize_log(name_of_log, debug=False):
     """
@@ -79,12 +79,16 @@ LOCATORS = {
     "dm_error_present": "//*[@aria-label='Failed to send']",
     "dm_account_instagram_user":"//span[normalize-space(.)='Instagram User' and contains(@style, 'line-height: var(--base-line-clamp-line-height);')]",
     "dm_not_everyone":"//div//div//span[@dir='auto' and contains(text(),'Not everyone can message this account.')]",
+    "dm_avatar_src":".//div[@role='presentation']//img[@alt='User avatar']",
+    "dm_is_sent":".//div[@role='listitem']//img[contains (@src, '{}')]",
+    "dm_invite_sent":".//span[contains(text(), 'Invite sent')]",
     "2f_screen_present": "//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
     "2f_entering_error": "//p[@id='twoFactorErrorAlert' and @role='alert']",
-    "check_dm_message_sent_to_user": "//div[@role='none']//div[@dir='auto' and @role='none']",
+    "check_dm_message_sent_to_user": "//div[@role='none']//div[@dir='auto']",
     "login_error": "//p[@id='slfErrorAlert']",
     "sus_attempt":"//p[text()='Suspicious Login Attempt']",
-    "save_login_info": "//button[text()='Save info']"
+    "save_login_info": "//button[text()='Save info']",
+
 }
 
 
@@ -112,6 +116,8 @@ def ensure_logged(func):
 
         return func(self, *args, **kwargs)
     return wrapper
+
+
 
 
 class User:
@@ -147,7 +153,7 @@ class User:
         options.add_argument("--disable-notifications")
         #options.add_argument('--headless=new')
         #options.add_experimental_option('excludeSwitches', ['enable-logging']) not working in undetected crhome
-        self.driver = uc(options=options, browser_executable_path="C:\\Users\\test\\Desktop\\chromedriver\\chrome.exe")
+        self.driver = uc(options=options, browser_executable_path="C:\\Users\\test\\Desktop\\chromedriver\\chrome.exe", driver_executable_path="C:\\Users\\test\\Desktop\\chromedriver\\chromedriver.exe")
 
         return self.driver
 
@@ -417,7 +423,6 @@ class User:
         self.logger.error("after entering code no change in url")
         return "cannot login"
 
-
     def login(self):
         if self.driver == None:
             self.driver = self._init_driver()
@@ -529,16 +534,50 @@ class User:
             self.logger.debug("Message ID not found in the current URL")
             return False
 
+    def __get_photo_single_path(self,url):
+        parsed_url = urlparse(url)
+        path_without_params = parsed_url.path.split('?')[0]  # Splitting to remove parameters
+        location = os.path.basename(path_without_params)
+        self.logger.debug(f'extracted avatar src: {location}, full src: {url}')
+        return location
+
+
+    def __check_is_sent(self):
+        if not self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 10):
+            return 'message is not even appearing'
+
+        try:
+            avatar_src = self.__get_photo_single_path(self.__wait(LOCATORS['dm_avatar_src'],5).get_attribute("src"))
+        except WaitException:
+            self.logger.error("Cannot locate dm name")
+            return "Cannot locate dm name"
+        
+        try:
+            self.__wait(LOCATORS['dm_is_sent'].format(avatar_src),10)
+        except WaitException:
+            if self.__is_element_present(LOCATORS['dm_account_instagram_user']):
+                return 'msg_id acc not found'
+            self.logger.warning("account cannot send messages")
+            return 'account cannot send messages'
+            
+
+
+
     @ensure_logged
     def send_msg_to_msg_id(self,msg_id,msg,check_dm_message=False):     
         self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
         try:
             msg_field = self.__wait(LOCATORS["dm_msg_field"],10)
         except WaitException:
+            
+            if self.__is_element_present(LOCATORS['dm_invite_sent'],1):
+                return 'already sent'
             self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
             try:
                 msg_field = self.__wait(LOCATORS["dm_msg_field"],10)
             except WaitException:
+                if self.__is_element_present(LOCATORS['dm_invite_sent'],1):
+                    return 'already sent'
                 return 'skip'
 
         if self.dm_notification_disabled == False:
@@ -552,10 +591,10 @@ class User:
         if err:
             return err 
 
-        err = self.__check_if_freezed()
+        err = self.__check_is_sent()
         if err:
             return err
-        
+  
         return "sent" 
 
     @ensure_logged
@@ -641,8 +680,12 @@ class User:
             action.move_to_element(msg_field)
             action.click()
             action.pause(1)
-            action.send_keys(msg+"\n")
+            action.send_keys(msg.replace('\n',''))
             action.perform()
+            time.sleep(1)
+
+            self.__wait_and_click(LOCATORS['dm_send_button'],5)
+
         except StaleElementReferenceException:
             if self.__is_element_present(LOCATORS["dm_not_everyone"]):
                 return "not everyone"
@@ -650,14 +693,6 @@ class User:
         
         if self.__is_element_present(LOCATORS["dm_not_everyone"]):
             return "not everyone"
-        
-    def __check_if_freezed(self):
-        if self.__is_element_present(LOCATORS["dm_error_present"], 3):
-            if self.__is_element_present(LOCATORS['dm_account_instagram_user']):
-                return 'msg_id acc not found'
-
-            self.logger.warn(f"acc: {self.username} freezed")
-            return "freeze"
         
     def __check_prev_mess(self,check_dm_message):
         if check_dm_message:
