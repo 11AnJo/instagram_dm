@@ -70,14 +70,14 @@ LOCATORS = {
     "login_password_field": "//input[@name='password']",
     "new_dm_btn": "//div[@role= 'button'][.//div//*//*[text()='New message']]",
     "dm_type_username": "//input[@placeholder='Search...']",
-    "dm_select_user": '//span/span/span[text()="{}"]',
+    "dm_select_user": '//div/span/span[text()="{}"]',
     "dm_user_not_found": "//span[text()='No account found.']",
     "dm_start_chat_btn": "//div/div[text()='Chat' and @role='button']",
     "dm_msg_field": "//div[@role='textbox' and @aria-label='Message']",
     "dm_notification_disable": "//button[text()='Not Now']",
     "dm_send_button": "//div[@role='button' and text()='Send']",
     "dm_error_present": "//*[@aria-label='Failed to send']",
-    "dm_account_instagram_user":"//span[normalize-space(.)='Instagram User' and contains(@style, 'line-height: var(--base-line-clamp-line-height);')]",
+    "dm_account_instagram_user":"//div[@role='presentation']//div//div//div//span[normalize-space(.)='Instagram User' and contains(@style, 'line-height: var(--base-line-clamp-line-height);')]",
     "dm_not_everyone":"//div//div//span[@dir='auto' and contains(text(),'Not everyone can message this account.')]",
     "dm_avatar_src":".//div[@role='presentation']//img[@alt='User avatar']",
     "dm_is_sent":".//div[@role='listitem']//img[contains (@src, '{}')]",
@@ -121,7 +121,7 @@ def ensure_logged(func):
 
 
 class User:
-    def __init__(self, profile_name=None, username=None, password=None, token=None, debug=False, starting_page='https://www.instagram.com/direct/'):
+    def __init__(self, profile_name=None, username=None, password=None, token=None, debug=False, starting_page='https://www.instagram.com/direct/',proxy=None):
         self.cookies_dict = None
         self.profile_name = profile_name
         self.username = username
@@ -129,6 +129,7 @@ class User:
         self.token = token
         self.starting_page = starting_page
         self.is_logged = False
+        self.proxy = proxy
 
         self.dm_notification_disabled = False
 
@@ -139,6 +140,7 @@ class User:
 
     
     def _init_driver(self):
+        print(self.proxy)
         options = Options()
         if self.profile_name:
             data_dir = f"{os.getcwd()}/profiles/{self.profile_name}"
@@ -151,6 +153,10 @@ class User:
         options.add_argument('--disable-infobars')
         options.add_argument("--disable-default-apps")
         options.add_argument("--disable-notifications")
+
+        #proxy only without authentication
+        if self.proxy:
+            options.add_argument(f"--proxy-server={self.proxy}")
         #options.add_argument('--headless=new')
         #options.add_experimental_option('excludeSwitches', ['enable-logging']) not working in undetected crhome
         self.driver = uc(options=options, browser_executable_path="C:\\Users\\test\\Desktop\\chromedriver\\chrome.exe", driver_executable_path="C:\\Users\\test\\Desktop\\chromedriver\\chromedriver.exe")
@@ -180,7 +186,7 @@ class User:
             return WebDriverWait(self.driver if webelement == "" else webelement, time).until(EC.presence_of_element_located((By.XPATH, xpath)))
         except Exception as e:
             self.logger.debug(
-                f"Could not wait for the element with xpath: {xpath}. Error: {str(e)}")
+                f"Could not wait for the element with xpath: {xpath}. Error: {e.msg}")
             raise WaitException(
                 f"Stopping execution due to failure in waiting for element: {xpath}") from e
 
@@ -543,6 +549,7 @@ class User:
 
 
     def __check_is_sent(self):
+        
         if not self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 10):
             return 'message is not even appearing'
 
@@ -552,33 +559,42 @@ class User:
             self.logger.error("Cannot locate dm name")
             return "Cannot locate dm name"
         
-        try:
-            self.__wait(LOCATORS['dm_is_sent'].format(avatar_src),10)
-        except WaitException:
-            if self.__is_element_present(LOCATORS['dm_account_instagram_user']):
+        res = self.__wait_for_first_element_or_url([
+            LOCATORS['dm_error_present'],
+            LOCATORS['dm_is_sent'].format(avatar_src)
+        ],timeout=20)
+
+        if res == 0:
+            if self.__is_element_present(LOCATORS["dm_account_instagram_user"],0):
                 return 'msg_id acc not found'
-            self.logger.warning("account cannot send messages")
-            return 'account cannot send messages'
+            return "freeze"
+        elif res == 1:
+            return
+         
             
 
 
 
     @ensure_logged
-    def send_msg_to_msg_id(self,msg_id,msg,check_dm_message=False):     
+    def send_msg_to_msg_id(self,msg_id,msg,check_dm_message=False):
+        self.logger.debug(f'send_msg_to_msg_id() - called with arguments: msg_id: {msg_id}, msg: {msg}, check_dm_message: {check_dm_message}')
         self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
-        try:
-            msg_field = self.__wait(LOCATORS["dm_msg_field"],10)
-        except WaitException:
-            
-            if self.__is_element_present(LOCATORS['dm_invite_sent'],1):
-                return 'already sent'
-            self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
-            try:
-                msg_field = self.__wait(LOCATORS["dm_msg_field"],10)
-            except WaitException:
-                if self.__is_element_present(LOCATORS['dm_invite_sent'],1):
-                    return 'already sent'
-                return 'skip'
+        
+        resp = self.__wait_for_first_element_or_url([
+            LOCATORS["dm_msg_field"],
+            LOCATORS["dm_not_everyone"],
+            LOCATORS['dm_invite_sent']
+            ],10)
+        
+        if resp == 0:
+            msg_field = self.__wait(LOCATORS["dm_msg_field"],0)
+        elif resp == 1:
+            return "not everyone"
+        elif resp == 2:
+            return 'already sent'
+        elif resp == False: 
+            self.logger.error(f'dm page is not loading or unexpected message not yet known. Please contact maintainer to fix that')
+            return 'error'
 
         if self.dm_notification_disabled == False:
             self.__check_dm_notification()
@@ -655,11 +671,10 @@ class User:
             if err:
                 return err 
         
-
-            err = self.__check_if_freezed()
+            err = self.__check_is_sent()
             if err:
                 return err
-
+        
             return "sent"
 
         except:
@@ -672,9 +687,6 @@ class User:
             self.dm_notification_disabled = True
 
     def __paste_msg_in_dm(self,msg,msg_field):
-        if self.__is_element_present(LOCATORS["dm_not_everyone"]):
-            return "not everyone"
-
         try:
             action = ActionChains(self.driver)
             action.move_to_element(msg_field)
@@ -687,12 +699,9 @@ class User:
             self.__wait_and_click(LOCATORS['dm_send_button'],5)
 
         except StaleElementReferenceException:
-            if self.__is_element_present(LOCATORS["dm_not_everyone"]):
-                return "not everyone"
-            self.logger.exception("StaleElementReferenceException")
+            self.logger.error("StaleElementReferenceException")
+            return 'try again'
         
-        if self.__is_element_present(LOCATORS["dm_not_everyone"]):
-            return "not everyone"
         
     def __check_prev_mess(self,check_dm_message):
         if check_dm_message:
