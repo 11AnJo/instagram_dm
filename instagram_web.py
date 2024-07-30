@@ -82,9 +82,11 @@ LOCATORS = {
     "dm_avatar_src":".//div[@role='presentation']//img[@alt='User avatar']",
     "dm_is_sent":".//div[@role='listitem']//img[contains (@src, '{}')]",
     "dm_invite_sent":".//span[contains(text(), 'Invite sent')]",
+    "dm_loading":"//div[@aria-label='Loading...']//div//img",
+    "dm_loaded":"//div//span[contains(text(),'Instagram') and @dir='auto']",
     "2f_screen_present": "//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
     "2f_entering_error": "//p[@id='twoFactorErrorAlert' and @role='alert']",
-    "check_dm_message_sent_to_user": "//div[@role='none']//div[@dir='auto']",
+    "dm_already_sent": "//div[@role='none']//div[@dir='auto']",
     "login_error": "//p[@id='slfErrorAlert']",
     "sus_attempt":"//p[text()='Suspicious Login Attempt']",
     "save_login_info": "//button[text()='Save info']",
@@ -121,7 +123,7 @@ def ensure_logged(func):
 
 
 class User:
-    def __init__(self, profile_name=None, username=None, password=None, token=None, debug=False, starting_page='https://www.instagram.com/direct/',proxy=None):
+    def __init__(self, profile_name=None, username=None, password=None, token=None, debug=False, starting_page='https://www.instagram.com/direct/',proxy=None,browser_executable_path=None,driver_executable_path=None):
         self.cookies_dict = None
         self.profile_name = profile_name
         self.username = username
@@ -135,6 +137,9 @@ class User:
 
         self.debug = debug
         self.logger = initialize_log(f"IG_{profile_name}_{username}",self.debug)
+
+        self.browser_executable_path = browser_executable_path
+        self.driver_executable_path = driver_executable_path
 
         self.driver = None
 
@@ -159,8 +164,8 @@ class User:
             options.add_argument(f"--proxy-server={self.proxy}")
         #options.add_argument('--headless=new')
         #options.add_experimental_option('excludeSwitches', ['enable-logging']) not working in undetected crhome
-        self.driver = uc(options=options, browser_executable_path="C:\\Users\\test\\Desktop\\chromedriver\\chrome.exe", driver_executable_path="C:\\Users\\test\\Desktop\\chromedriver\\chromedriver.exe")
-
+        
+        self.driver = uc(options=options, browser_executable_path=self.browser_executable_path, driver_executable_path=self.driver_executable_path)
         return self.driver
 
     def __wait_and_click(self, xpath, time=5):
@@ -550,7 +555,7 @@ class User:
 
     def __check_is_sent(self):
         
-        if not self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 10):
+        if not self.__is_element_present(LOCATORS['dm_already_sent'], 10):
             return 'message is not even appearing'
 
         try:
@@ -576,14 +581,38 @@ class User:
 
 
     @ensure_logged
-    def send_msg_to_msg_id(self,msg_id,msg,check_dm_message=False):
-        self.logger.debug(f'send_msg_to_msg_id() - called with arguments: msg_id: {msg_id}, msg: {msg}, check_dm_message: {check_dm_message}')
-        self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
+    def send_msg_to_msg_id(self,msg_id,msg,skip_if_already_messaged=False):
+        def load_chat():
+            self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
+            try:
+                self.__wait(LOCATORS['dm_loaded'],15)
+            except WaitException:
+                if self.__is_element_present(LOCATORS["dm_account_instagram_user"],0):
+                    return 'msg_id acc not found'
+                self.logger.error('chat didnt loaded in time... trying again')
+                self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
+                try:
+                    self.__wait(LOCATORS['dm_loaded'],15)
+                except WaitException:
+                    self.logger.error('chat didnt loaded 2 consecutive times')
+                    return 'error'
         
+
+        self.logger.debug(f'send_msg_to_msg_id() - called with arguments: msg_id: {msg_id}, msg: {msg}, check_dm_message: {skip_if_already_messaged}')
+        
+        err = load_chat()
+        if err:
+            return err
+
+        if skip_if_already_messaged and self.__is_element_present(LOCATORS['dm_already_sent']):
+            return 'already sent'
+
+            
+
         resp = self.__wait_for_first_element_or_url([
             LOCATORS["dm_msg_field"],
             LOCATORS["dm_not_everyone"],
-            LOCATORS['dm_invite_sent']
+            LOCATORS['dm_invite_sent'],
             ],10)
         
         if resp == 0:
@@ -591,17 +620,17 @@ class User:
         elif resp == 1:
             return "not everyone"
         elif resp == 2:
-            return 'already sent'
+            return 'invite already sent'
         elif resp == False: 
             self.logger.error(f'dm page is not loading or unexpected message not yet known. Please contact maintainer to fix that')
             return 'error'
 
+        
+            
+        
+
         if self.dm_notification_disabled == False:
             self.__check_dm_notification()
-
-        err = self.__check_prev_mess(check_dm_message)
-        if err:
-            return err
             
         err = self.__paste_msg_in_dm(msg,msg_field)
         if err:
@@ -613,12 +642,12 @@ class User:
   
         return "sent" 
 
-    @ensure_logged
-    def send_msg(self, to_username, msg, check_dm_message=False):
-        try:
-            self.logger.debug(
-                f"send_msg() called with parameters to_username: {to_username}, msg: {msg}")
 
+
+
+    @ensure_logged
+    def send_msg(self, to_username, msg, skip_if_already_messaged=False):
+        def go_to_user_dm():
             if not self.__is_element_present(LOCATORS["new_dm_btn"], 0):
                 self.driver.get("https://www.instagram.com/direct/")
 
@@ -633,17 +662,16 @@ class User:
 
             search_user_field = self.__wait(LOCATORS["dm_type_username"])
             search_user_field.send_keys(to_username)
-
             username_path = LOCATORS["dm_select_user"].format(to_username)
+
             try:
                 self.__wait_and_click(username_path)
             except:
                 self.logger.error("cant select user from list")
                 return "No account found."
-
+            
             next_btn = self.__wait(LOCATORS["dm_start_chat_btn"])
             last_url = self.driver.current_url
-
             self.driver.execute_script("arguments[0].click();", next_btn)
 
             tries = 0
@@ -656,35 +684,79 @@ class User:
                 else:
                     changed = True
                     break
-
             if changed == False:
                 self.logger.error("cant access the new url")
                 return "url problem"
-
-            msg_field = self.__wait(LOCATORS["dm_msg_field"])
-
-            err = self.__check_prev_mess(check_dm_message)
+            
+        def load_chat():
+            err = go_to_user_dm()
             if err:
                 return err
-
-            err = self.__paste_msg_in_dm(msg,msg_field)
-            if err:
-                return err 
+            try:
+                self.__wait(LOCATORS['dm_loaded'],15)
+            except WaitException:
+                self.logger.error('chat didnt loaded in time... trying again')
+                self.driver.get(f'https://www.instagram.com/direct')
+                err = go_to_user_dm()
+                if err:
+                    return err
+                try:
+                    self.__wait(LOCATORS['dm_loaded'],15)
+                except WaitException:
+                    self.logger.error('chat didnt loaded 2 consecutive times')
+                    return 'error'
+                
         
-            err = self.__check_is_sent()
-            if err:
-                return err
-        
-            return "sent"
+        self.logger.debug(
+            f"send_msg() called with parameters to_username: {to_username}, msg: {msg}")
 
-        except:
-            self.logger.exception("send_msg()")
-            return "error"
+        err = load_chat()
+        if err:
+            return err
+
+        if skip_if_already_messaged and self.__is_element_present(LOCATORS['dm_already_sent']):
+            return 'already sent'
+
+        resp = self.__wait_for_first_element_or_url([
+            LOCATORS["dm_msg_field"],
+            LOCATORS["dm_not_everyone"],
+            LOCATORS['dm_invite_sent'],
+            ],10)
+        
+        if resp == 0:
+            msg_field = self.__wait(LOCATORS["dm_msg_field"],0)
+        elif resp == 1:
+            return "not everyone"
+        elif resp == 2:
+            return 'invite already sent'
+        elif resp == False: 
+            self.logger.error(f'dm page is not loading or unexpected message not yet known. Please contact maintainer to fix that')
+            return 'error'
+
+        
+
+        if self.dm_notification_disabled == False:
+            self.__check_dm_notification()
+            
+        err = self.__paste_msg_in_dm(msg,msg_field)
+        if err:
+            return err 
+
+        err = self.__check_is_sent()
+        if err:
+            return err
+  
+        return "sent" 
+
+        
 
     def __check_dm_notification(self):
         if self.__is_element_present(LOCATORS["dm_notification_disable"], 4):
             self.__wait_and_click(LOCATORS["dm_notification_disable"], 2)
             self.dm_notification_disabled = True
+        else:
+            self.dm_notification_disabled = True
+
 
     def __paste_msg_in_dm(self,msg,msg_field):
         try:
@@ -696,17 +768,15 @@ class User:
             action.perform()
             time.sleep(1)
 
-            self.__wait_and_click(LOCATORS['dm_send_button'],5)
-
+            try:
+                self.__wait_and_click(LOCATORS['dm_send_button'],5)
+            except WaitAndClickException:
+                if self.__is_element_present(LOCATORS["dm_not_everyone"],0):
+                    return "not everyone"
         except StaleElementReferenceException:
             self.logger.error("StaleElementReferenceException")
             return 'try again'
         
-        
-    def __check_prev_mess(self,check_dm_message):
-        if check_dm_message:
-            if self.__is_element_present(LOCATORS['check_dm_message_sent_to_user'], 2):
-                return 'already sent'
 
     @ensure_logged
     def go_to_url(self,url):
