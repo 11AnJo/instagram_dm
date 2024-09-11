@@ -1,6 +1,5 @@
 #from selenium import webdriver as uc
-from undetected_chromedriver import Chrome as uc
-from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -18,26 +17,28 @@ import os
 from logging.handlers import RotatingFileHandler
 from urllib.parse import urlparse
 
-def initialize_log(name_of_log, debug=False):
+def initialize_log(name_of_log, debug=False, log_path=None):
     """
     Initialize a logger with two file handlers: one for normal logs and one for debug logs.
     The debug log file is limited to 1MB in size.
+    
+    If log_path is not provided, it defaults to a 'log' directory in the same location as the script.
     """
 
-    # Create the log directory if it doesn't exist
-    log_dir = f'./app/log/{name_of_log}'
+    if log_path is None:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        log_dir = os.path.join(script_dir, 'log', name_of_log)
+    else:
+        log_dir = os.path.join(log_path, name_of_log)
+
     if not os.path.isdir(log_dir):
         os.makedirs(log_dir)
 
-
-    # Initialize the logger
     logger = logging.getLogger(name_of_log)
     logger.setLevel(logging.DEBUG)
 
-    # Create a formatter
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-    # Create file handler for normal logging
     normal_log_file = os.path.join(log_dir, f"{name_of_log}.log")
     file_handler = logging.FileHandler(normal_log_file)
     file_handler.setLevel(logging.DEBUG if debug else logging.INFO)
@@ -123,7 +124,7 @@ def ensure_logged(func):
 
 
 class User:
-    def __init__(self, profile_name=None, username=None, password=None, token=None, debug=False, starting_page='https://www.instagram.com/direct/',proxy=None,browser_executable_path=None,driver_executable_path=None):
+    def __init__(self, profile_name=None, username=None, password=None, token=None, debug=False, starting_page='https://www.instagram.com/direct/',proxy=None,browser_executable_path=None,driver_executable_path=None,headless=False,log_path=None):
         self.cookies_dict = None
         self.profile_name = profile_name
         self.username = username
@@ -132,11 +133,12 @@ class User:
         self.starting_page = starting_page
         self.is_logged = False
         self.proxy = proxy
-
+        self.headless = headless
         self.dm_notification_disabled = False
+        self.log_path = log_path
 
         self.debug = debug
-        self.logger = initialize_log(f"IG_{profile_name}_{username}",self.debug)
+        self.logger = initialize_log(f"IG_{profile_name}_{username}",self.debug,self.log_path)
 
         self.browser_executable_path = browser_executable_path
         self.driver_executable_path = driver_executable_path
@@ -145,8 +147,11 @@ class User:
 
     
     def _init_driver(self):
-        print(self.proxy)
-        options = Options()
+        options = uc.ChromeOptions()
+
+        if not os.path.exists(f"{os.getcwd()}/profiles"):
+            os.makedirs(f"{os.getcwd()}/profiles")
+
         if self.profile_name:
             data_dir = f"{os.getcwd()}/profiles/{self.profile_name}"
             options.add_argument(f"--user-data-dir={data_dir}")
@@ -158,14 +163,19 @@ class User:
         options.add_argument('--disable-infobars')
         options.add_argument("--disable-default-apps")
         options.add_argument("--disable-notifications")
+        options.add_argument("--disable-notifications")
 
         #proxy only without authentication
         if self.proxy:
             options.add_argument(f"--proxy-server={self.proxy}")
-        #options.add_argument('--headless=new')
+        if self.headless:
+            options.add_argument('--headless=new')
         #options.add_experimental_option('excludeSwitches', ['enable-logging']) not working in undetected crhome
         
-        self.driver = uc(options=options, browser_executable_path=self.browser_executable_path, driver_executable_path=self.driver_executable_path)
+        self.driver = uc.Chrome(options=options,
+                         # driver_executable_path='chromedriver',
+                         browser_executable_path=r"C:\\Users\\test\\Desktop\\chrome\\chrome.exe",
+                         driver_executable_path="C:\\Users\\test\\Desktop\\chrome\\chromedriver.exe")
         return self.driver
 
     def __wait_and_click(self, xpath, time=5):
@@ -534,16 +544,6 @@ class User:
         except:
             self.logger.exception("login")
 
-    def __get_id_from_url(self,url):
-        self.logger.debug(f"__get_id_from_url() called with: url: {url}")
-        match = re.search(r"https://www\.instagram\.com/direct/t/(\d+)/", url)
-        if match:
-            message_id = match.group(1)
-            self.logger.debug(f"Message ID: {message_id}")
-            return message_id
-        else:
-            self.logger.debug("Message ID not found in the current URL")
-            return False
 
     def __get_photo_single_path(self,url):
         parsed_url = urlparse(url)
@@ -554,7 +554,6 @@ class User:
 
 
     def __check_is_sent(self):
-        
         if not self.__is_element_present(LOCATORS['dm_already_sent'], 10):
             return 'message is not even appearing'
 
@@ -572,13 +571,10 @@ class User:
         if res == 0:
             if self.__is_element_present(LOCATORS["dm_account_instagram_user"],0):
                 return 'msg_id acc not found'
-            return "freeze"
+            return "acc freezed"
         elif res == 1:
             return
          
-            
-
-
 
     @ensure_logged
     def send_msg_to_msg_id(self,msg_id,msg,skip_if_already_messaged=False):
@@ -641,8 +637,6 @@ class User:
             return err
   
         return "sent" 
-
-
 
 
     @ensure_logged
@@ -748,7 +742,6 @@ class User:
   
         return "sent" 
 
-        
 
     def __check_dm_notification(self):
         if self.__is_element_present(LOCATORS["dm_notification_disable"], 4):
@@ -777,70 +770,3 @@ class User:
             self.logger.error("StaleElementReferenceException")
             return 'try again'
         
-
-    @ensure_logged
-    def go_to_url(self,url):
-        self.driver.get(url)
-
-    def _move_primary_general(self):
-        self.__wait_and_click('//*[@aria-label="Conversation information"]',2)
-
-        self.__wait_and_click('//div[@role="button" and text()="Move"]',5)
-        sleep(1)
-
-    def _get_current_messages(self,i=0):
-        i+= 1
-        if i == 5:
-            raise BrokenChatException()
-        
-        def get_list(list_of_msg_webelements) -> list:
-            msg = []
-            for webelement in list_of_msg_webelements:
-                msg.append(webelement.text)
-            return msg
-        try:
-            assistant = self.__wait_for_all("//div[contains(@style,'background-color: rgb(55, 151, 240)')]",5)
-        except:
-            self.driver.refresh()
-            return self._get_current_messages(i)
-        
-
-        assistant_msg = get_list(assistant)
-        try:
-            user = self.__wait_for_all("//div[contains(@style,'background-color: rgb(var(--ig-highlight-background))')]",5)
-            user_msg = get_list(user)
-        except:
-            user_msg = []
-
-        all = self.__wait_for_all('//div[@aria-label="Double tap to like"]',5)
-        all_msg = get_list(all)
-
-        self.logger.info(f'found {len(all_msg)} messages')
-        self.logger.debug(f"{self.__get_id_from_url(self.driver.current_url),all_msg, user_msg, assistant_msg}")
-
-        return self.__get_id_from_url(self.driver.current_url),all_msg, user_msg, assistant_msg
-
-    @ensure_logged
-    def get_new_context(self,first=True):
-
-        if not "https://www.instagram.com/direct/" in self.driver.current_url:
-            self.driver.get("https://www.instagram.com/direct/")
-        sleep(1)
-        
-        if self.dm_notification_disabled == False:
-            self.__check_dm_notification()
-
-        try:
-            new_msgs = self.__wait_for_all('//span[@data-visualcompletion="ignore"]/parent::div/parent::div/parent::div/parent::div')
-        except:
-            return "no new messages"
-        
-        #self.logger.info(new_msgs)
-        
-        new_msgs[0 if first else -1].location_once_scrolled_into_view
-        new_msgs[0 if first else -1].click()
-        sleep(3)
-
-        return self._get_current_messages()
-        
- 
