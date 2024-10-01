@@ -13,7 +13,7 @@ from selenium.common.exceptions import TimeoutException
 import pyotp
 import re
 import logging
-import os
+import os, random
 from logging.handlers import RotatingFileHandler
 from urllib.parse import urlparse
 
@@ -89,6 +89,8 @@ LOCATORS = {
     "2f_entering_error": "//p[@id='twoFactorErrorAlert' and @role='alert']",
     "dm_already_sent": "//div[@role='none']//div[@dir='auto']",
     "login_error": "//p[@id='slfErrorAlert']",
+    "login_sus_automated_present":"//span[text()='We suspect automated behavior on your account']",
+    "login_sus_automated_dismiss":"//div/span[text()='Dismiss']",
     "sus_attempt":"//p[text()='Suspicious Login Attempt']",
     "save_login_info": "//button[text()='Save info']",
 
@@ -271,84 +273,6 @@ class User:
         self.logger.debug("No element or URL found/loaded within the timeout period.")
         return False
 
-
-    @ensure_logged
-    def get_suggestions(self, username):
-        def get_all_usernames():
-            usernames = set()
-            repeated_count = 0
-            threshold = 5  # Adjust the threshold as needed
-
-            while True:
-                elements = self.__wait_for_all('//a//div//span//div')
-                old_len = len(usernames)
-                for el in elements:
-                    try:
-                        # Get the text of the element
-                        text = el.text
-
-                        # Skip if the username contains 'Verified'
-                        if 'Verified' in text:
-                            continue
-
-                        # Add the username to the set
-                        usernames.add(text)
-                    except StaleElementReferenceException:
-                        continue
-
-                if old_len == len(usernames):
-                    repeated_count += 1
-                    if repeated_count >= threshold:
-                        break
-                else:
-                    repeated_count = 0
-
-                # Scroll down to load more usernames
-                self.driver.execute_script(
-                    "arguments[0].scrollIntoView();", elements[-1])
-                time.sleep(1)  # Adjust the sleep time as needed
-
-            return usernames
-
-        LOCATORS_SUGGESTIONS = {
-            'page_unavailable': "//span[text()='Sorry, this page isn't available.']",
-            'suggest_button': "//div[@role='button']//div//*[local-name() = 'svg']",
-            'see_all_button': "//a[@role='link']//span[@dir='auto' and text()='See all']",
-            'similar_acc_presence': "//div[text()='Discover more accounts']",
-            'err_unable_to_load': "//div[text()='Unable to load suggestions.']"
-        }
-
-        try:
-
-            self.logger.debug(
-                f"get_suggestions() - called with username: {username}")
-
-            self.driver.get(f'https://www.instagram.com/{username}')
-            try:
-                self.__wait_and_click(LOCATORS_SUGGESTIONS['suggest_button'])
-            except WaitAndClickException:
-                if self.__is_element_present(LOCATORS_SUGGESTIONS["page_unavailable"]):
-                    self.logger.debug("Profile is unavailable")
-                    return "Profile is unavailable"
-                self.logger.exception("AJAJ")
-
-            if self.__is_element_present(LOCATORS_SUGGESTIONS['err_unable_to_load'], 3):
-                return 'acc locked'
-
-            self.__wait_and_click(LOCATORS_SUGGESTIONS['see_all_button'])
-
-            self.__wait(LOCATORS_SUGGESTIONS['similar_acc_presence'])
-            return get_all_usernames()
-
-        except WaitAndClickException as e:
-            self.logger.error(
-                f"get_suggestions() - Stopping execution. Error: {str(e)}")
-            return False
-        except WaitException as e:
-            self.logger.error(
-                f"get_suggestions() - Stopping execution. Error: {str(e)}")
-            return False
-
     def exit_driver(self):
         if self.driver != None:
             self.driver.quit()
@@ -357,7 +281,7 @@ class User:
         self.dm_notification_disabled = False
 
     @ensure_logged
-    def get_cookies(self, close_after=True):
+    def get_cookies(self, close_after=False):
 
         def transform_cookies(cookies):
             headers = {}
@@ -464,6 +388,10 @@ class User:
                     try:
                         self.__wait_and_click(LOCATORS["save_login_info"],20)
                     except WaitAndClickException:
+                        self.driver.get('https://www.instagram.com/direct/')
+                        if self.driver.current_url == 'https://www.instagram.com/direct/':
+                            self.is_logged = True
+                            return True
                         if self.__is_element_present(LOCATORS['sus_attempt']):
                             self.logger.warning("suspicious login attempt")
                             input("suspicious login attempt")
@@ -510,12 +438,16 @@ class User:
                 
             try:
                 self.__accept_post_login_cookie()
-                self.__wait(LOCATORS["save_login_info"],15)
-                time.sleep(2)
+                
 
-                self.__wait_and_click(LOCATORS["save_login_info"],1)
                 while True:
-                    if "https://www.instagram.com/accounts/onetap" in self.driver.current_url:
+                    if self.__is_element_present(LOCATORS['login_sus_automated_present'],0):
+                        self.logger.warning("Instagram: We suspect automated behavior on your account")
+                        time.sleep(random.randrange(1,5))
+                        self.__wait_and_click(LOCATORS['login_sus_automated_dismiss'],0)
+                        time.sleep(2)
+                        self.driver.get('https://www.instagram.com/accounts/onetap')
+                    elif not self.driver.current_url.startswith("https://www.instagram.com/accounts/onetap"):
                         time.sleep(1)
                         continue
                     time.sleep(2)
@@ -524,20 +456,19 @@ class User:
                 if self.__is_element_present(LOCATORS['sus_attempt']):
                     self.logger.warning("suspicious login attempt")
                     return "suspicious login attempt"
+                
+            self.__wait(LOCATORS["save_login_info"],15)
+            time.sleep(1)
+            self.__wait_and_click(LOCATORS["save_login_info"],1)
 
-        
-            if self.__accept_post_login_cookie(0):
-                self.logger.warning("post cookie not accepted first time, please adjust the sleep time")
+            #is it still here?
+            #try:
+            #    self.__wait_and_click(LOCATORS["dm_notification_disable"], 5)
+            #    self.dm_notification_disabled = True
+            #except WaitAndClickException:
+            #    self.logger.info("No dm notification")
 
-            try:
-                self.__wait_and_click(LOCATORS["dm_notification_disable"], 10)
-                self.dm_notification_disabled = True
-            except WaitAndClickException:
-                self.logger.info("No dm notification")
-
-            #self.driver.get("https://www.instagram.com/direct/inbox")
-            sleep(10)
-            self.logger.info(f"Login succesfull to")
+            self.logger.info(f"Login succesfull to: {self.username}")
             self.is_logged = True
             return True
 
