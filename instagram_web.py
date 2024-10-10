@@ -447,6 +447,9 @@ class User:
                         self.__wait_and_click(LOCATORS['login_sus_automated_dismiss'],0)
                         time.sleep(2)
                         self.driver.get('https://www.instagram.com/accounts/onetap')
+                    elif self.__is_element_present(LOCATORS['sus_attempt'],0):
+                        self.logger.warning("Instagram: Suspicious Login Attempt")
+                        return "Suspicious Login Attempt"
                     elif not self.driver.current_url.startswith("https://www.instagram.com/accounts/onetap"):
                         time.sleep(1)
                         continue
@@ -460,7 +463,7 @@ class User:
             self.__wait(LOCATORS["save_login_info"],15)
             time.sleep(1)
             self.__wait_and_click(LOCATORS["save_login_info"],1)
-
+            time.sleep(5)
             #is it still here?
             #try:
             #    self.__wait_and_click(LOCATORS["dm_notification_disable"], 5)
