@@ -14,7 +14,6 @@ import pyotp
 import requests
 import logging
 import os, random
-from urllib.parse import urlparse
 
 logger = logging.getLogger('instagram_web')
 handler = logging.StreamHandler() 
@@ -36,16 +35,9 @@ LOCATORS = {
     "login_save_info": "//button[text()='Save info']",
     "login_freezed":"//span[@dir='auto' and text()='Something went wrong']",
 
-
     "2f_screen_present": "//input[@aria-describedby='verificationCodeDescription' and @aria-label='Security Code']",
     "2f_entering_error": "//p[@id='twoFactorErrorAlert' and @role='alert']",
 
-
-
-    "new_dm_btn": "//div[@role= 'button'][.//div//*//*[text()='New message']]",
-    "dm_type_username": "//input[@placeholder='Search...']",
-    "dm_select_user": '//div/span/span[text()="{}"]',
-    "dm_start_chat_btn": "//div/div[text()='Chat' and @role='button']",
     "dm_msg_field": "//div[@role='textbox' and @aria-label='Message']",
     "dm_send_button": "//div[@role='button' and text()='Send']",
     "dm_error_present": "//*[@aria-label='Failed to send']",
@@ -55,12 +47,9 @@ LOCATORS = {
     "dm_invite_sent":".//span[contains(text(), 'Invite sent')]",
     "dm_loaded":"//div//span[contains(text(),'Instagram') and @dir='auto']",
     "dm_already_sent": "//div[@role='none']//div[@dir='auto']",
-    
-
     "dm_user_not_found": "//span[text()='No account found.']",
 
 }
-raw_string = r"This is a raw string: 'single quote' and \"double quote\"."
 
 
 class WaitAndClickException(Exception):
@@ -96,8 +85,9 @@ def escape_string_for_xpath(s):
         return "'%s'" % s
     return '"%s"' % s
 
+
 class User:
-    def __init__(self, profile_name=None, username=None, password=None, token=None, proxy=None,browser_executable_path=None,driver_executable_path=None,headless=False,log_path=None):
+    def __init__(self, profile_name=None, username=None, password=None, token=None, proxy=None,browser_executable_path=None,driver_executable_path=None,headless=False):
         self.cookies_dict = None
         self.profile_name = profile_name
         self.username = username
@@ -122,8 +112,8 @@ class User:
         if self.profile_name:
             data_dir = f"{os.getcwd()}/profiles/{self.profile_name}"
             options.add_argument(f"--user-data-dir={data_dir}")
+        
         options.add_argument("--lang=en_US")
-        options.add_argument("--mute-audio")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-software-rasterizer")
@@ -229,14 +219,13 @@ class User:
 
     @ensure_logged
     def get_cookies(self, close_after=False):
-        cookie = {}
+        self.cookies_dict = {}
         for c in self.driver.get_cookies():  
-            cookie[c['name']] = c['value'] 
+            self.cookies_dict[c['name']] = c['value'] 
 
-        self.cookies_dict = cookie
         if close_after:
             self.exit_driver()
-        return cookie
+        return self.cookies_dict
 
 
 
@@ -265,15 +254,13 @@ class User:
             return False
 
     def __two_factor(self):
+        logger.debug(f"__two_factor() called")
         url = self.driver.current_url
-
 
         a = self.__wait(LOCATORS['2f_screen_present'],10)
         a.send_keys(Keys.CONTROL, 'a')
         a.send_keys(Keys.BACKSPACE)
         self.__paste_text(LOCATORS['2f_screen_present'], self.__generate_2factor_code(self.token), time_to_wait=10)
-
-        
 
         if self.__is_element_present(LOCATORS['2f_entering_error'], 2):
             logger.error("2f_entering_error")
@@ -290,8 +277,8 @@ class User:
 
 
     def login(self):
-        if self.driver == None:
-            self.driver = self._init_driver()
+        if self.driver is None:
+            self._init_driver()
 
         self.driver.get('https://www.instagram.com/direct/')
         if self.driver.current_url == 'https://www.instagram.com/direct/':
@@ -303,8 +290,6 @@ class User:
 
             self.__accept_pre_login_cookie()
             
-            
-
             for _ in range(6):
                 resp = self.__wait_for_first_element_or_url((
                     LOCATORS['2f_screen_present'],
@@ -320,18 +305,22 @@ class User:
                     if self.__two_factor() == "login failed":
                         return "login failed"
                     continue
+
                 elif resp == 1: #LOCATORS['login_sus_automated_dismiss']
                     logger.warning("Instagram: We suspect automated behavior on your account")
                     time.sleep(random.randrange(1,5))
                     self.__wait_and_click(LOCATORS['login_sus_automated_dismiss'],0)
                     time.sleep(random.randrange(1,5))
                     continue
+                
                 elif resp == 2: #LOCATORS["login_sus_attempt"]
                     logger.warning("Instagram: Suspicious Login Attempt")
                     return "Suspicious Login Attempt"
+                
                 elif resp == 3: #LOCATORS["login_save_info"]
                     self.__wait_and_click(LOCATORS["login_save_info"],0)
                     continue
+
                 elif resp == 4: #LOCATORS['login_profile_username']
                     if self.__is_element_present(LOCATORS['login_edit_profile_btn']):
                         logger.info(f"Login succesfull to: {self.username}")
@@ -347,29 +336,21 @@ class User:
                             continue
                         logger.error(f"Login failed to: {self.username}")
                         return "login failed"
+                    
                 elif resp == 5: #LOCATORS['login_error']
                     logger.error(f"There was a problem logger you into Instagram. Please try again soon.")
                     return "There was a problem logger you into Instagram. Please try again soon."
+                
                 elif resp == 6: #LOCATORS['login_freezed']
                     logger.error(f"Account is freezed: Rate limit reached")
                     return "Account is freezed: Rate limit reached"
                     
                         
-
-                
             logger.error("login failed")
             return "login failed"
         except:
             logger.exception("login failed")
             return "login failed"
-
-
-    def __get_photo_single_path(self,url):
-        parsed_url = urlparse(url)
-        path_without_params = parsed_url.path.split('?')[0]  # Splitting to remove parameters
-        location = os.path.basename(path_without_params)
-        logger.debug(f'extracted avatar src: {location}, full src: {url}')
-        return location
 
 
     def __check_is_sent(self,msg):        
@@ -390,34 +371,55 @@ class User:
             return 'invite already sent'
         elif res == 3:
             return "not everyone can message this account"
-         
+
+    def __paste_msg_in_dm(self,msg,msg_field):
+        try:
+            action = ActionChains(self.driver)
+            action.move_to_element(msg_field)
+            action.click()
+            action.pause(1)
+            action.send_keys(msg.replace('\n',''))
+            action.perform()
+            time.sleep(1)
+
+            try:
+                self.__wait_and_click(LOCATORS['dm_send_button'],5)
+            except WaitAndClickException:
+                if self.__is_element_present(LOCATORS["dm_not_everyone"],0):
+                    return "not everyone can message this account"
+                
+        except StaleElementReferenceException:
+            if self.__is_element_present(LOCATORS["dm_invite_sent"],0):
+                return 'invite already sent'
+            
+            elif self.__is_element_present(LOCATORS["dm_not_everyone"],0):
+                return "not everyone can message this account"
+            
+            logger.error("Msg field loaded but something unexpected is obstructing it. Please contact maintainer to fix that")
+            return 'error'
+          
 
     @ensure_logged
     def send_msg_to_msg_id(self,msg_id,msg,skip_if_already_messaged=False):
-        def load_chat():
-            self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
-            try:
-                self.__wait(LOCATORS['dm_loaded'],15)
-            except WaitException:
-                if self.__is_element_present(LOCATORS["dm_account_instagram_user"],0):
-                    return 'msg_id acc not found'
-                logger.error('chat didnt loaded in time... trying again')
-                self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
-                try:
-                    self.__wait(LOCATORS['dm_loaded'],15)
-                except WaitException:
-                    logger.error('chat didnt loaded 2 consecutive times')
-                    return 'error'
-        
-
         logger.debug(f'send_msg_to_msg_id() - called with arguments: msg_id: {msg_id}, msg: {msg}, check_dm_message: {skip_if_already_messaged}')
         
-        err = load_chat()
-        if err:
-            return err
+        self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
+        try:
+            self.__wait(LOCATORS['dm_loaded'],10)
+        except WaitException:
+            if self.__is_element_present(LOCATORS["dm_account_instagram_user"],0):
+                return 'msg_id acc not found'
+            
+            logger.error('chat didnt loaded in time... trying again')
+            self.driver.get(f'https://www.instagram.com/direct/t/{msg_id}')
+            try:
+                self.__wait(LOCATORS['dm_loaded'],10)
+            except WaitException:
+                logger.error('chat didnt loaded 2 consecutive times')
+                return 'error'
 
         if skip_if_already_messaged and self.__is_element_present(LOCATORS['dm_already_sent']):
-            return 'already sent'
+            return 'message already sent'
 
         
         resp = self.__wait_for_first_element_or_url([
@@ -444,7 +446,7 @@ class User:
         if err:
             return err
   
-        return "sent" 
+        return "sent"
 
 
     @ensure_logged
@@ -477,6 +479,9 @@ class User:
         if response.status_code == 404:
             logger.info(f"account: {to_username} not found")
             return "account not found"
+        elif response.status_code != 200:
+            logger.error(f"Error while fetching user id. Status code: {response.status_code}")
+            return "error"
         
         msg_id = response.json()['data']['user']['eimu_id']
         logger.info(msg_id)
@@ -485,26 +490,3 @@ class User:
 
 
 
-    def __paste_msg_in_dm(self,msg,msg_field):
-        try:
-            action = ActionChains(self.driver)
-            action.move_to_element(msg_field)
-            action.click()
-            action.pause(1)
-            action.send_keys(msg.replace('\n',''))
-            action.perform()
-            time.sleep(1)
-
-            try:
-                self.__wait_and_click(LOCATORS['dm_send_button'],5)
-            except WaitAndClickException:
-                if self.__is_element_present(LOCATORS["dm_not_everyone"],0):
-                    return "not everyone can message this account"
-        except StaleElementReferenceException:
-            if self.__is_element_present(LOCATORS["dm_invite_sent"],0):
-                return 'invite already sent'
-            elif self.__is_element_present(LOCATORS["dm_not_everyone"],0):
-                return "not everyone can message this account"
-            logger.error("Msg field loaded but something unexpected is obstructing it. Please contact maintainer to fix that")
-            return 'error'
-        
