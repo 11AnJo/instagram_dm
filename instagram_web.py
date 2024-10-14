@@ -209,7 +209,7 @@ class User:
                     logger.debug(f"Error while waiting for the element or URL: {element}. Error: {str(e)}")
 
         logger.debug("No element or URL found/loaded within the timeout period.")
-        return False
+        return -1
 
     def exit_driver(self):
         if self.driver != None:
@@ -289,7 +289,11 @@ class User:
             self.driver.get(f'https://instagram.com/{self.username}')
 
             self.__accept_pre_login_cookie()
-            
+            time.sleep(3)
+            self.__paste_text(LOCATORS["login_username_field"],self.username,1)
+            time.sleep(3)
+            self.__paste_text(LOCATORS["login_password_field"],self.password+'\n',1)
+
             for _ in range(6):
                 resp = self.__wait_for_first_element_or_url((
                     LOCATORS['2f_screen_present'],
@@ -344,7 +348,8 @@ class User:
                 elif resp == 6: #LOCATORS['login_freezed']
                     logger.error(f"Account is freezed: Rate limit reached")
                     return "Account is freezed: Rate limit reached"
-                    
+                elif resp == -1:
+                    break   
                         
             logger.error("login failed")
             return "login failed"
