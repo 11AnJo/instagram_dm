@@ -1,0 +1,3 @@
+[submodule "selenium_utils"]
+	path = selenium_utils
+	url = https://github.com/11AnJo/selenium_utils.git
