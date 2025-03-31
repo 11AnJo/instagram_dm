@@ -1,3 +1,4 @@
 selenium
 pyotp
 -e ./selenium_utils
+requests
