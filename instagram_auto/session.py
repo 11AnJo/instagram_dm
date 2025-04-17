@@ -17,7 +17,7 @@ import os, random
 
 from .constants import URLS, LOCATORS
 from .utils import escape_string_for_xpath, generate_2factor_code
-from selenium_utils import SeleniumUtils, ProxyUtils, WaitAndClickException, WaitException
+from .selenium_utils import SeleniumUtils, ProxyUtils, WaitAndClickException, WaitException
 
 logger = logging.getLogger('instagram_web')
 handler = logging.StreamHandler() 
