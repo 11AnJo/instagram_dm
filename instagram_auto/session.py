@@ -3,20 +3,22 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
-from selenium import webdriver
-
-from time import sleep
-import time
-import os
 from selenium.common.exceptions import StaleElementReferenceException
 from selenium.common.exceptions import TimeoutException
-import pyotp
+from selenium import webdriver
+
+from typing import Optional
+from pathlib import Path
+from time import sleep
+import time
+import json
 import requests
 import logging
-import os, random
+import random
+from functools import wraps
 
 from .constants import URLS, LOCATORS
-from .utils import escape_string_for_xpath, generate_2factor_code
+from .utils import escape_string_for_xpath, generate_2factor_code, generate_uuid
 from .selenium_utils import SeleniumUtils, ProxyUtils, WaitAndClickException, WaitException
 
 logger = logging.getLogger('instagram_web')
@@ -47,17 +49,36 @@ def logged_in(func):
     return wrapper
 
 
+def cache_cookies():
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            current_time = time.time()
+            
+            # If we have cached cookies and they're still fresh
+            if (self._session_cookies and 
+                self._cookies_last_fetched and 
+                (current_time - self._cookies_last_fetched) < 12 * 3600):   #12 hrs
+                return self._session_cookies
+                
+            # Otherwise fetch fresh cookies
+            result = func(self, *args, **kwargs)
+            self._cookies_last_fetched = current_time
+            return result
+        return wrapper
+    return decorator
+
 class Session(SeleniumUtils):
     def __init__(
             self,
-            profile_name=None, 
-            username=None, 
-            password=None, 
-            token=None, 
-            proxy=None,
-            browser_executable_path=None,
-            driver_executable_path=None,
-            headless=False
+            profile_name: Optional[str] = None,
+            username: Optional[str] = None,
+            password: Optional[str] = None,
+            token: Optional[str] = None,
+            proxy: Optional[str] = None,
+            browser_executable_path: Optional[Path] = None,
+            driver_executable_path: Optional[Path] = None,
+            headless: bool = False
         ) -> None:        
         self._username = username
         self._password = password
@@ -106,11 +127,12 @@ class Session(SeleniumUtils):
         self.is_logged_in = False
 
     @logged_in
+    @cache_cookies()
     def get_cookies(self, close_after=False):
+        """Get cookies from the browser and cache them for 12 hours"""
         self._session_cookies = {}
         for c in self.driver.get_cookies():  
             self._session_cookies[c['name']] = c['value'] 
-
         if close_after:
             self.exit_driver()
         return self._session_cookies
@@ -316,8 +338,21 @@ class Session(SeleniumUtils):
 
     @logged_in
     def send_msg(self, to_username, msg, skip_if_already_messaged=False):
+        data = self.get_user_info(to_username)
+        if data == "account not found":
+            return "account not found"
+        elif data == "error":
+            return "error"
+        
+        msg_id = data['data']['user']['eimu_id']
+        
+        return self.send_msg_to_msg_id(msg_id, msg, skip_if_already_messaged)
+
+
+    @logged_in
+    def get_user_info(self, username):
         headers = {
-            'accept': '*/*',
+            'accept': '/',
             'accept-language': 'en-US,en;q=0.9',
             'priority': 'u=1, i',
             'sec-ch-prefers-color-scheme': 'dark',
@@ -335,23 +370,70 @@ class Session(SeleniumUtils):
             'x-ig-app-id': '936619743392459',
             'x-requested-with': 'XMLHttpRequest',
         }
+
+        params = {"username": username}
         
-        url = "https://www.instagram.com/api/v1/users/web_profile_info/"
-        params = {"username": to_username}
-        self.get_cookies(close_after=False)
-        response = requests.get(url, params=params, cookies=self._session_cookies, headers=headers)
+        response = requests.get(URLS['user_info_endpoint'], params=params, cookies=self.get_cookies(), headers=headers)
 
         if response.status_code == 404:
-            logger.info(f"account: {to_username} not found")
+            logger.info(f"account: {username} not found")
             return "account not found"
         elif response.status_code != 200:
             logger.error(f"Error while fetching user id. Status code: {response.status_code}")
             return "error"
         
-        msg_id = response.json()['data']['user']['eimu_id']
-        logger.info(msg_id)
+        try:
+            #msg_id = response.json()['data']['user']['eimu_id']
+            return response.json()
+        except json.JSONDecodeError:
+            logger.error("Failed to decode JSON response")
+            return "error"
+    
+    @logged_in
+    def get_posts_from_hashtag(self, hashtag, max_id=None, rank_token=None, enable_metadata=False):
+        headers = {
+            'accept': '/',
+            'accept-language': 'en-US,en;q=0.9',
+            'priority': 'u=1, i',
+            'sec-ch-prefers-color-scheme': 'dark',
+            'sec-ch-ua': '"Chromium";v="129", "Not=A?Brand";v="8"',
+            'sec-ch-ua-full-version-list': '"Chromium";v="129.0.6668.70", "Not=A?Brand";v="8.0.0.0"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-model': '""',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-ch-ua-platform-version': '"15.0.0"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+            'x-asbd-id': '129477',
+            'x-ig-app-id': '936619743392459',
+            'x-requested-with': 'XMLHttpRequest',
+        }
+
+        params = {
+            'enable_metadata': str(enable_metadata).lower(),
+            'query': '#' + hashtag,
+            'next_max_id': max_id,
+            'rank_token': rank_token if rank_token else generate_uuid(),
+        }
+
+        response = requests.get(
+            URLS['hashtag_search_endpoint'],
+            params=params,
+            cookies=self.get_cookies(),
+            headers=headers,
+        )
+
+        if response.status_code != 200:
+            logger.error(f"Error while fetching posts from hashtag. Status code: {response.status_code}")
+            return "error"
         
-        return self.send_msg_to_msg_id(msg_id, msg, skip_if_already_messaged)
-
-
-
+        try:
+            data = response.json()
+            next_max_id = data['media_grid']['next_max_id']
+            rank_token = data['media_grid']['rank_token']
+            return data, next_max_id, rank_token
+        except json.JSONDecodeError:
+            logger.error("Failed to decode JSON response")
+            return "error"

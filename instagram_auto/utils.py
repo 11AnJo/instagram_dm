@@ -1,5 +1,7 @@
 import time
 import pyotp
+import hashlib
+import uuid
 
 def generate_2factor_code(token: str):
     totp = pyotp.TOTP(token)
@@ -19,3 +21,15 @@ def escape_string_for_xpath(s):
     elif '"' in s:
         return "'%s'" % s
     return '"%s"' % s
+
+def generate_uuid(return_hex=False, seed=None):
+    if seed:
+        m = hashlib.md5()
+        m.update(seed.encode('utf-8'))
+        new_uuid = uuid.UUID(m.hexdigest())
+    else:
+        new_uuid = uuid.uuid1()
+    if return_hex:
+        return new_uuid.hex
+    return str(new_uuid)
+

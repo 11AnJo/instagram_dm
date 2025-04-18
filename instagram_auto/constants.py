@@ -30,4 +30,6 @@ LOCATORS = {
 
 URLS = {
     "login": "https://www.instagram.com/accounts/login/?next=https%3A%2F%2Fwww.instagram.com%2Fdirect%2F",
-}
+    "user_info_endpoint": "https://www.instagram.com/api/v1/users/web_profile_info/",
+    "hashtag_search_endpoint": "https://www.instagram.com/api/v1/fbsearch/web/top_serp/",
+}   
