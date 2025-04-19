@@ -259,29 +259,35 @@ class Session(SeleniumUtils):
         elif res == 3:
             return "not everyone can message this account"
 
-    def _paste_msg_in_dm(self,msg,msg_field):
+    def _paste_msg_in_dm(self, msg, msg_field):
         try:
             action = ActionChains(self.driver)
             action.move_to_element(msg_field)
             action.click()
             action.pause(1)
-            action.send_keys(msg.replace('\n',''))
+
+            # send newlines with SHIFT+ENTER
+            lines = msg.split('\n')
+            for i, line in enumerate(lines):
+                if i > 0:
+                    action.key_down(Keys.SHIFT).send_keys(Keys.ENTER).key_up(Keys.SHIFT)
+                action.send_keys(line)
+
             action.perform()
             time.sleep(1)
 
             try:
-                self._wait_and_click(LOCATORS['dm']['send_button'],5)
+                self._wait_and_click(LOCATORS['dm']['send_button'], 5)
             except WaitAndClickException:
-                if self._is_element_present(LOCATORS['dm']["not_everyone"],0):
+                if self._is_element_present(LOCATORS['dm']["not_everyone"], 0):
                     return "not everyone can message this account"
-                
+
         except StaleElementReferenceException:
-            if self._is_element_present(LOCATORS['dm']["invite_sent"],0):
+            if self._is_element_present(LOCATORS['dm']["invite_sent"], 0):
                 return 'invite already sent'
-            
-            elif self._is_element_present(LOCATORS['dm']["not_everyone"],0):
+            elif self._is_element_present(LOCATORS['dm']["not_everyone"], 0):
                 return "not everyone can message this account"
-            
+
             logger.error("Msg field loaded but something unexpected is obstructing it. Please contact maintainer to fix that")
             return 'error'
           
